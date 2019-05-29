@@ -6,8 +6,40 @@ from torch.utils.data import DataLoader
 import progressbar
 import numpy as np
 
+class CustomLoss:
+    def __init__(self,smooth_reg=0.0,unif_reg=0.0,entr_reg=0.0):
+        self.smooth_reg = smooth_reg
+        self.unif_reg = unif_reg
+        self.neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
+                       [1,-1,-1],[1,-1,0],[1,-1,1],
+                       [1,0,-1], [1,0,0], [1,0,1],
+                       [1,1,-1], [1,1,0], [1,1,1]]
+
+    def mse_loss(self,X,Y):
+        mse_loss = torch.mean((X-Y)*(X-Y))
+        return mse_loss
+
+    def smooth_loss(self,Z):
+        smooth_losses = []
+        for (Nz,Ny,Nx) in self.neighs:
+            H = torch.cat((Z[:,:,-Nz:],    Z[:,:,:-Nz]),    dim=2)
+            H = torch.cat((H[:,:,:,-Ny:],  H[:,:,:,:-Ny]),  dim=3)
+            H = torch.cat((H[:,:,:,:,-Nx:],H[:,:,:,:,:-Nx]),dim=4)
+            H = Z-H
+            smooth_losses.append(torch.mean(H*H))   
+        return self.smooth_reg*torch.mean(torch.stack(smooth_losses))
+
+    def unif_loss(self,Z):
+        return -self.unif_reg*torch.mean(torch.log(torch.mean(Z,dim=(2,3,4))))
+    
+    def entr_loss(self,Z):
+        return self.entr_reg*torch.mean(Z*torch.log(Z))
+
+    def loss(self,X,Z,Y):
+        return self.mse_loss(X,Y)+self.smooth_loss(Z)+self.unif_loss(Z)+self.entr_loss(Z)
+
 class AutoSegmenter:
-    def __init__(self,num_labels,batch=16,lr=1e-3,eps=0,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
+    def __init__(self,num_labels,smooth_reg=0.0,unif_reg=0.0,batch=16,lr=1e-3,eps=0,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
         self.lr = lr
         self.batch = batch
         self.device = device
@@ -20,8 +52,9 @@ class AutoSegmenter:
         if self.device == 'cuda':
             self.model = torch.nn.DataParallel(self.model)
             torch.backends.cudnn.benchmark = True
-        
-        self.criterion = torch.nn.MSELoss()
+            #torch.backends.cudnn.benchmark = False #True results in cuDNN error: CUDNN_STATUS_INTERNAL_ERROR on pascal
+       
+        self.criterion = CustomLoss(smooth_reg,unif_reg)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=lr) 
 
         if load_checkpoint_epoch is not None:
@@ -43,11 +76,15 @@ class AutoSegmenter:
             self.curr_train_loss = float('inf')
             self.curr_val_loss = float('inf')
 
-        self.widgets = [' [', progressbar.Percentage(), '] ',progressbar.Bar(),
-            ' [', progressbar.DynamicMessage('batch_loss'), '] ',
-            ' [', progressbar.DynamicMessage('avg_loss'), '] ',
-            ' [', progressbar.Timer(), '] ',
-            ' [', progressbar.ETA(), '] ']
+#        self.widgets = [' [', progressbar.Percentage(), '] ',progressbar.Bar(),
+#            ' [', progressbar.DynamicMessage('avg_loss'), '] ',
+#            ' [', progressbar.DynamicMessage('batch_loss'), '] ',
+#            ' [', progressbar.DynamicMessage('batch_mse'), '] ',
+#            ' [', progressbar.DynamicMessage('batch_smooth'), '] ',
+#            ' [', progressbar.DynamicMessage('batch_unif'), '] ',
+#            ' [', progressbar.DynamicMessage('batch_entr'), '] ',
+#            ' [', progressbar.Timer(), '] ',
+#            ' [', progressbar.ETA(), '] ']
     
         if not os.path.exists(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
@@ -58,21 +95,27 @@ class AutoSegmenter:
         self.model.train()
         
         total_loss = 0.0
-        widgets = ['Train:']+self.widgets
-        with progressbar.ProgressBar(max_value=len(train_loader),widgets=widgets) as bar:
-            for idx,data_in in enumerate(train_loader):
-                data_in = data_in.to(self.device)
-                self.optimizer.zero_grad()
-                data_out = self.model(data_in)
-                
-                loss = self.criterion(data_in,data_out)
-                loss.backward()
-                self.optimizer.step()
+#        widgets = ['Train:']+self.widgets
+#        with progressbar.ProgressBar(max_value=len(train_loader),widgets=widgets) as bar:
+        for idx,data_in in enumerate(train_loader):
+            data_in = data_in.to(self.device)
+            self.optimizer.zero_grad()
+            seg,data_out = self.model(data_in)
+            
+            mse_loss = self.criterion.mse_loss(data_in,data_out)
+            smooth_loss = self.criterion.smooth_loss(seg)
+            unif_loss = self.criterion.unif_loss(seg)
+            entr_loss = self.criterion.entr_loss(seg)
+            loss = mse_loss+smooth_loss+unif_loss+entr_loss
 
-                total_loss += loss.item()
-                avg_loss = total_loss/(idx+1)
+            loss.backward()
+            self.optimizer.step()
 
-                bar.update(idx,avg_loss=avg_loss,batch_loss=loss.item())
+            total_loss += loss.item()
+            avg_loss = total_loss/(idx+1)
+
+            print("TRAIN: avg loss {:.2e}, batch loss {:.2e}, batch mse {:.2e}, batch smooth {:.2e}, batch unif {:.2e}, batch entr {:.2e}".format(avg_loss,loss.item(),mse_loss.item(),smooth_loss.item(),unif_loss.item(),entr_loss.item()))
+#                bar.update(idx,avg_loss=avg_loss,batch_loss=loss.item(),batch_mse=mse_loss.item(),batch_smooth=smooth_loss.item(),batch_unif=unif_loss.item(),batch_entr=entr_loss.item())
 
         self.curr_train_loss = avg_loss
         return avg_loss
@@ -83,18 +126,25 @@ class AutoSegmenter:
         self.model.eval()
         
         total_loss = 0.0
-        widgets = ['Test:']+self.widgets
+#        widgets = ['Test:']+self.widgets
         with torch.no_grad():
-            with progressbar.ProgressBar(max_value=len(test_loader),widgets=widgets) as bar:
-                for idx,data_in in enumerate(test_loader):
-                    data_in = data_in.to(self.device)
-                    data_out = self.model(data_in)
+#            with progressbar.ProgressBar(max_value=len(test_loader),widgets=widgets) as bar:
+            for idx,data_in in enumerate(test_loader):
+                data_in = data_in.to(self.device)
+                seg,data_out = self.model(data_in)
 
-                    loss = self.criterion(data_in,data_out)
-                    total_loss += loss.item()
-                    avg_loss = total_loss/(idx+1)
+                mse_loss = self.criterion.mse_loss(data_in,data_out)
+                smooth_loss = self.criterion.smooth_loss(seg)
+                unif_loss = self.criterion.unif_loss(seg)
+                entr_loss = self.criterion.entr_loss(seg)
+                loss = mse_loss+smooth_loss+unif_loss+entr_loss
+                
+                total_loss += loss.item()
+                avg_loss = total_loss/(idx+1)
 
-                    bar.update(idx,avg_loss=avg_loss,batch_loss=loss.item())
+                print("TEST: avg loss {:.2e}, batch loss {:.2e}, batch mse {:.2e}, batch smooth {:.2e}, batch unif {:.2e}, batch entr {:.2e}".format(avg_loss,loss.item(),mse_loss.item(),smooth_loss.item(),unif_loss.item(),entr_loss.item()))
+                    
+#                    bar.update(idx,avg_loss=avg_loss,batch_loss=loss.item(),batch_mse=mse_loss.item(),batch_smooth=smooth_loss.item(),batch_unif=unif_loss.item(),batch_entr=entr_loss.item())
 
         self.curr_val_loss = avg_loss
         return avg_loss
@@ -103,15 +153,16 @@ class AutoSegmenter:
         loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
         self.model.eval()
         
-        widgets = ['Segment:']+self.widgets
+        #widgets = ['Segment:']+self.widgets
         inp,segm = [],[] 
         with torch.no_grad():
-            with progressbar.ProgressBar(max_value=len(loader),widgets=widgets) as bar:
-                for idx,data_in in enumerate(loader):
-                    inp.append(data_in.numpy())
-                    data_in = data_in.to(self.device)
-                    data_out = self.cnn(data_in).cpu().numpy()
-                    segm.append(data_out)
+            #with progressbar.ProgressBar(max_value=len(loader),widgets=widgets) as bar:
+            for idx,data_in in enumerate(loader):
+                inp.append(data_in.numpy())
+                data_in = data_in.to(self.device)
+                data_out = self.cnn(data_in).cpu().numpy()
+                segm.append(data_out)
+                print("Segmentation complete")
         return np.concatenate(segm,axis=0),np.concatenate(inp,axis=0)
 
     def get_checkpoint_path(self, epoch):
