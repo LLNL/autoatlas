@@ -29,11 +29,11 @@ class CustomLoss:
             smooth_losses.append(torch.mean(H*H))   
         return self.smooth_reg*torch.mean(torch.stack(smooth_losses))
 
-    def unif_loss(self,Z):
+    def unif_loss(self,Z): #To enforce an equal number of voxels for each class/label
         return -self.unif_reg*torch.mean(torch.log(torch.mean(Z,dim=(2,3,4))))
     
-    def entr_loss(self,Z):
-        return self.entr_reg*torch.mean(Z*torch.log(Z))
+    def entr_loss(self,Z): #Must reduce entropy at each voxel. Force each voxel to be a single class.
+        return -self.entr_reg*torch.mean(Z*torch.log(Z))
 
     def loss(self,X,Z,Y):
         return self.mse_loss(X,Y)+self.smooth_loss(Z)+self.unif_loss(Z)+self.entr_loss(Z)
