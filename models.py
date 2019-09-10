@@ -1,14 +1,22 @@
 import torch
 
 class SegmRecon(torch.nn.Module):
-    def __init__(self,cnn,eps=0.0):
+    def __init__(self,segm,autoencs):
         super(SegmRecon,self).__init__()
-        self.cnn = cnn
-        self.eps = eps   
+        self.segm = segm
+        self.autoencs = autoencs
  
     def forward(self,x):
-        y = self.cnn(x)
-        emb = torch.sum(x*y,dim=(2,3,4),keepdim=True)
-        emb = emb/(torch.sum(y,dim=(2,3,4),keepdim=True)+self.eps)
-        return y,torch.sum(y*emb,dim=1)
+        y = self.segm(x)
+#        emb = torch.sum(x*y,dim=(2,3,4),keepdim=True)
+#        emb = emb/(torch.sum(y,dim=(2,3,4),keepdim=True)+self.eps)
+#        return y,torch.sum(y*emb,dim=1)
+        recons = []
+        for i,auto in enumerate(self.autoencs):
+            z = [x*y[:,i:i+1],x*(1-y[:,i:i+1])]
+            z = torch.cat(z,dim=1)
+            recons.append(y[:,i:i+1]*auto(z)) #i:i+1 ensures singleton dimensions are retained
+        return y,torch.sum(torch.stack(recons,dim=-1),dim=-1)
+
+        
           

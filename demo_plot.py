@@ -1,27 +1,51 @@
 import matplotlib.pyplot as plt
 from segmenter import AutoSegmenter
-from data import SSDataset
+from data import HCPDataset
 from plot import stack_plot
 import os
+import numpy as np
 
 #Parameters
-load_epoch = 26
-num_labels = 8
-dims = [128,128,128]
-#[160,160,160] is probably the maximum
-data_folder = '/usr/workspace/wsb/tbidata/workspace_aditya/Data/ss_nii/'
+num_epochs = 20
+num_labels = 16
+dims = [80,96,80]
+mean = 135.4005
+stdev = 286.3180
+
+train_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/train'
+test_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/test'
 
 #Datasets
-data_files = [os.path.join(data_folder,f) for f in os.listdir(data_folder) if f[-4:]=='.nii']
+train_files = [os.path.join(train_folder,f) for f in os.listdir(train_folder) if f[-7:]=='.nii.gz']
+test_files = [os.path.join(test_folder,f) for f in os.listdir(test_folder) if f[-7:]=='.nii.gz']
 
-train_seg = SSDataset(data_files[-1],dims)
-valid_seg = SSDataset(data_files[0],dims)
+train_data = HCPDataset(train_files[0],dims,mean,stdev)
+test_data = HCPDataset(test_files[0],dims,mean,stdev)
 
-#NN Model
-autoseg = AutoSegmenter(num_labels,smooth_reg=1000.0,unif_reg=100.0,batch=2,eps=1e-15,lr=1e-4,device='cuda',load_checkpoint_epoch=load_epoch)
+train_loss,test_loss = [],[]
+for load_epoch in range(num_epochs):
+    autoseg = AutoSegmenter(num_labels,smooth_reg=0.0,unif_reg=0.0,entr_reg=0.0,batch=2,lr=1e-4,device='cuda',load_checkpoint_epoch=load_epoch)
+    train_loss.append(autoseg.curr_train_loss)
+    test_loss.append(autoseg.curr_test_loss)
 
-#Training
-tseg,tvol = autoseg.segment(train_seg)
-vseg,vvol = autoseg.segment(valid_seg)
-for i in range(num_labels):
-    stack_plot([tvol[0,0],vvol[0,0]],[tseg[0,i],vseg[0,i]],'epoch_{}_label_{}_sample_1.png'.format(load_epoch,i))
+plt.plot(range(num_epochs),train_loss)
+plt.plot(range(num_epochs),test_loss)
+plt.yscale('log')
+plt.xlabel('epochs')
+plt.ylabel('loss')
+plt.legend(['train','test'])
+plt.savefig('loss.png')
+
+test_seg,test_rec,test_vol = autoseg.segment(test_data)
+test_auto,_ = autoseg.classrec(test_data)
+
+stack_plot(np.stack([test_vol[0,0],test_rec[0,0]],axis=0),'gtvsrec_z.png',sldim='z',nrows=1)
+stack_plot(np.stack([test_vol[0,0],test_rec[0,0]],axis=0),'gtvsrec_y.png',sldim='y',nrows=1)
+stack_plot(np.stack([test_vol[0,0],test_rec[0,0]],axis=0),'gtvsrec_x.png',sldim='x',nrows=1)
+stack_plot(test_seg[0],'seg_z.png',sldim='z',nrows=2)
+stack_plot(test_seg[0],'seg_y.png',sldim='y',nrows=2)
+stack_plot(test_seg[0],'seg_x.png',sldim='x',nrows=2)
+stack_plot(test_auto[0],'auto_z.png',sldim='z',nrows=2)
+stack_plot(test_auto[0],'auto_y.png',sldim='y',nrows=2)
+stack_plot(test_auto[0],'auto_x.png',sldim='x',nrows=2)
+
