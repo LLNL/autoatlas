@@ -4,9 +4,12 @@ from data import HCPDataset
 #from plot import stack_plot
 import os
 
+#Regularization parameters
+entr_reg = 1.0
+
 #Parameters
 num_epochs = 20
-load_epoch = 9
+load_epoch = -1
 num_labels = 16
 dims = [80,96,80]
 #dims = [176,208,176]
@@ -24,15 +27,12 @@ test_files = [os.path.join(test_folder,f) for f in os.listdir(test_folder) if f[
 train_data = HCPDataset(train_files,dims,mean,stdev)
 valid_data = HCPDataset(test_files,dims,mean,stdev)
 
-train_seg = HCPDataset(train_files[0],dims,mean)
-valid_seg = HCPDataset(test_files[0],dims,stdev)
-
 #NN Model
 #autoseg = AutoSegmenter(num_labels,smooth_reg=1000.0,unif_reg=100.0,entr_reg=100.0,batch=2,eps=1e-15,lr=1e-4,device='cuda')
 if load_epoch >= 0:
-    autoseg = AutoSegmenter(num_labels,smooth_reg=0.0,unif_reg=0.0,entr_reg=0.0,batch=2,lr=1e-4,device='cuda',load_checkpoint_epoch=load_epoch)
+    autoseg = AutoSegmenter(num_labels,smooth_reg=0.0,unif_reg=0.0,entr_reg=entr_reg,batch=2,lr=1e-4,device='cuda',load_checkpoint_epoch=load_epoch)
 elif load_epoch == -1:
-    autoseg = AutoSegmenter(num_labels,smooth_reg=0.0,unif_reg=0.0,entr_reg=0.0,batch=2,lr=1e-4,device='cuda')
+    autoseg = AutoSegmenter(num_labels,smooth_reg=0.0,unif_reg=0.0,entr_reg=entr_reg,batch=2,lr=1e-4,device='cuda')
 else:
     raise ValueError('load_epoch must be greater than or equal to -1')
 

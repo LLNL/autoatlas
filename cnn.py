@@ -32,8 +32,8 @@ class UNet3D(torch.nn.Module):
                         torch.nn.ReLU(inplace=True),
                         torch.nn.Conv3d(filters,filters,kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True),
-                        torch.nn.Conv3d(filters,num_labels,1,padding=0),
-                        torch.nn.Softmax(dim=1))
+                        torch.nn.Conv3d(filters,num_labels,1,padding=0))
+                        #torch.nn.Softmax(dim=1))
 
     def forward(self,x):
         features = []
