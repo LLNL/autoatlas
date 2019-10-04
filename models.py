@@ -17,8 +17,9 @@ class SegmRecon(torch.nn.Module):
         for i,auto in enumerate(self.autoencs):
             z = [x*y[:,i:i+1],x*(1-y[:,i:i+1])]
             z = torch.cat(z,dim=1)
-            recons.append(y[:,i:i+1]*auto(z)) #i:i+1 ensures singleton dimensions are retained
-        return seg,y,torch.sum(torch.stack(recons,dim=-1),dim=-1)
+            recons.append(auto(z)) #i:i+1 ensures singleton dimensions are retained
+        #return seg,y,torch.sum(torch.stack(recons,dim=-1),dim=-1)
+        return seg,y,recons
 
         
           

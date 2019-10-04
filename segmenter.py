@@ -7,11 +7,12 @@ import progressbar
 import numpy as np
 
 class CustomLoss:
-    def __init__(self,smooth_reg=0.0,unif_reg=0.0,entr_reg=0.0,entr_norm=1.0):
+    def __init__(self,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01):
         self.smooth_reg = smooth_reg
-        self.unif_reg = unif_reg
+        self.devr_reg = devr_reg
         self.entr_reg = entr_reg
         self.entr_norm = entr_norm
+        self.min_freqs = min_freqs
         self.neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
                        [1,-1,-1],[1,-1,0],[1,-1,1],
                        [1,0,-1], [1,0,0], [1,0,1],
@@ -19,22 +20,28 @@ class CustomLoss:
         self.softmax = torch.nn.Softmax(dim=1)
         self.logsoftmax = torch.nn.LogSoftmax(dim=1)
         
-    def mse_loss(self,X,Y):
-        mse_loss = torch.mean((X-Y)*(X-Y))
-        return mse_loss
+    def mse_loss(self,X,Ys,Z):
+        mse_losses = []
+        for i,ysamp in enumerate(Ys):
+            mse_losses.append(torch.mean((X-ysamp)*Z[:,i:i+1,:,:,:]*(X-ysamp)))
+        return torch.sum(torch.stack(mse_losses))
 
-#    def smooth_loss(self,Z):
-#        smooth_losses = []
-#        for (Nz,Ny,Nx) in self.neighs:
-#            H = torch.cat((Z[:,:,-Nz:],    Z[:,:,:-Nz]),    dim=2)
-#            H = torch.cat((H[:,:,:,-Ny:],  H[:,:,:,:-Ny]),  dim=3)
-#            H = torch.cat((H[:,:,:,:,-Nx:],H[:,:,:,:,:-Nx]),dim=4)
-#            H = Z-H
-#            smooth_losses.append(torch.mean(H*H))   
-#        return self.smooth_reg*torch.mean(torch.stack(smooth_losses))
+    def smooth_loss(self,Z):
+        smooth_losses = []
+        for (Nz,Ny,Nx) in self.neighs:
+            H = torch.cat((Z[:,:,-Nz:],    Z[:,:,:-Nz]),    dim=2)
+            H = torch.cat((H[:,:,:,-Ny:],  H[:,:,:,:-Ny]),  dim=3)
+            H = torch.cat((H[:,:,:,:,-Nx:],H[:,:,:,:,:-Nx]),dim=4)
+            H = Z*H
+            smooth_losses.append(torch.mean(H,dim=(2,3,4)))   
+        smooth_loss = -torch.log(torch.sum(torch.mean(torch.stack(smooth_losses,dim=-1),dim=-1),dim=1))
+        return self.smooth_reg*torch.mean(smooth_loss)
 
-#    def unif_loss(self,Z): #To enforce an equal number of voxels for each class/label
-#        return -self.unif_reg*torch.mean(torch.log(torch.mean(Z,dim=(2,3,4))))
+    def devr_loss(self,Z):
+        clp = torch.mean(Z,dim=(2,3,4))
+        clp = -torch.log(clp/self.min_freqs)
+        clp = torch.clamp(clp,min=0)
+        return self.devr_reg*torch.mean(clp)
     
     def entr_loss(self,Z,normZ): #Must reduce entropy at each voxel. Force each voxel to be a single class.
         return -self.entr_reg*torch.mean(normZ*self.logsoftmax(Z))/self.entr_norm
@@ -44,7 +51,7 @@ class CustomLoss:
         return self.mse_loss(X,Y)
 
 class AutoSegmenter:
-    def __init__(self,num_labels,smooth_reg=0.0,unif_reg=0.0,entr_reg=0.0,batch=16,lr=1e-3,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
+    def __init__(self,num_labels,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
         self.lr = lr
         self.batch = batch
         self.device = device
@@ -63,7 +70,7 @@ class AutoSegmenter:
             torch.backends.cudnn.benchmark = True
             #torch.backends.cudnn.benchmark = False #True results in cuDNN error: CUDNN_STATUS_INTERNAL_ERROR on pascal
        
-        self.criterion = CustomLoss(smooth_reg,unif_reg,entr_reg=entr_reg,entr_norm=np.log(num_labels))
+        self.criterion = CustomLoss(smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=entr_reg,entr_norm=np.log(num_labels),min_freqs=min_freqs)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=lr) 
 
         if load_checkpoint_epoch is not None:
@@ -77,20 +84,28 @@ class AutoSegmenter:
                 self.start_epoch = checkpoint['epoch']
                 self.train_tot_loss = checkpoint['train_tot_loss']
                 self.train_mse_loss = checkpoint['train_mse_loss']
+                self.train_smooth_loss = checkpoint['train_smooth_loss']
                 self.train_entr_loss = checkpoint['train_entr_loss']
+                self.train_devr_loss = checkpoint['train_devr_loss']
                 self.test_tot_loss = checkpoint['test_tot_loss']
                 self.test_mse_loss = checkpoint['test_mse_loss']
+                self.test_smooth_loss = checkpoint['test_smooth_loss']
                 self.test_entr_loss = checkpoint['test_entr_loss']
+                self.test_devr_loss = checkpoint['test_devr_loss']
                 print('Loaded model from epoch: {}'.format(self.start_epoch),flush=True)
                 print('Model stats: train loss={:.3e}, test loss={:.3e}'.format(self.train_tot_loss,self.test_tot_loss),flush=True)
         else:
             self.start_epoch = 0
             self.train_tot_loss = float('inf')
             self.train_mse_loss = float('inf')
+            self.train_smooth_loss = float('inf')
             self.train_entr_loss = float('inf')
+            self.train_devr_loss = float('inf')
             self.test_tot_loss = float('inf')
             self.test_mse_loss = float('inf')
+            self.test_smooth_loss = float('inf')
             self.test_entr_loss = float('inf')
+            self.test_devr_loss = float('inf')
 
         if not os.path.exists(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
@@ -101,37 +116,47 @@ class AutoSegmenter:
         self.model.train()
        
         num_batch = 0 
-        avg_tot_loss,avg_mse_loss,avg_entr_loss = 0.0,0.0,0.0
+        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss = 0.0,0.0,0.0,0.0,0.0
         for data_in in train_loader:
             data_in = data_in.to(self.device)
             self.optimizer.zero_grad()
             seg,norm_seg,data_out = self.model(data_in)
             
-            mse_loss = self.criterion.mse_loss(data_in,data_out)
+            mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg)
+            smooth_loss = self.criterion.smooth_loss(norm_seg)
             entr_loss = self.criterion.entr_loss(seg,norm_seg)
-            tot_loss = mse_loss+entr_loss
+            devr_loss = self.criterion.devr_loss(norm_seg)
+            tot_loss = mse_loss+smooth_loss+entr_loss+devr_loss
 
             tot_loss.backward()
             self.optimizer.step()
 
             batch_mse_loss = mse_loss.item()
+            batch_smooth_loss = smooth_loss.item()
             batch_entr_loss = entr_loss.item()
+            batch_devr_loss = devr_loss.item()
             batch_tot_loss = tot_loss.item()
 
             avg_mse_loss += batch_mse_loss
+            avg_smooth_loss += batch_smooth_loss
             avg_entr_loss += batch_entr_loss
+            avg_devr_loss += batch_devr_loss
             avg_tot_loss += batch_tot_loss
             num_batch += 1
-            print("TRAIN: batch losses: tot {:.2e}, mse {:.2e}, entr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_entr_loss))
+            print("TRAIN: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_entr_loss,batch_devr_loss))
 
         avg_tot_loss /= num_batch
         avg_mse_loss /= num_batch
+        avg_smooth_loss /= num_batch
         avg_entr_loss /= num_batch
-        print("TRAIN: average losses: tot {:.2e}, mse {:.2e}, entr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_entr_loss))
+        avg_devr_loss /= num_batch
+        print("TRAIN: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss))
 
         self.train_tot_loss = avg_tot_loss
         self.train_mse_loss = avg_mse_loss
+        self.train_smooth_loss = avg_smooth_loss
         self.train_entr_loss = avg_entr_loss
+        self.train_devr_loss = avg_devr_loss
         return avg_tot_loss
 
     def test(self,dataset):
@@ -140,34 +165,44 @@ class AutoSegmenter:
         self.model.eval()
         
         num_batch = 0 
-        avg_tot_loss,avg_mse_loss,avg_entr_loss = 0.0,0.0,0.0
+        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss = 0.0,0.0,0.0,0.0,0.0
         with torch.no_grad():
             for data_in in test_loader:
                 data_in = data_in.to(self.device)
                 seg,norm_seg,data_out = self.model(data_in)
 
-                mse_loss = self.criterion.mse_loss(data_in,data_out)
+                mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg)
+                smooth_loss = self.criterion.smooth_loss(norm_seg)
                 entr_loss = self.criterion.entr_loss(seg,norm_seg)
-                tot_loss = mse_loss+entr_loss
+                devr_loss = self.criterion.devr_loss(norm_seg)
+                tot_loss = mse_loss+smooth_loss+entr_loss+devr_loss
                 
                 batch_mse_loss = mse_loss.item()
+                batch_smooth_loss = smooth_loss.item()
                 batch_entr_loss = entr_loss.item()
+                batch_devr_loss = devr_loss.item()
                 batch_tot_loss = tot_loss.item()
 
                 avg_mse_loss += batch_mse_loss
+                avg_smooth_loss += batch_smooth_loss
                 avg_entr_loss += batch_entr_loss
+                avg_devr_loss += batch_devr_loss
                 avg_tot_loss += batch_tot_loss
                 num_batch += 1
-                print("TEST: batch losses: tot {:.2e}, mse {:.2e}, entr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_entr_loss))
+                print("TEST: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_entr_loss,batch_devr_loss))
                     
         avg_tot_loss /= num_batch
         avg_mse_loss /= num_batch
+        avg_smooth_loss /= num_batch
         avg_entr_loss /= num_batch
-        print("TEST: average losses: tot {:.2e}, mse {:.2e}, entr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_entr_loss))
+        avg_devr_loss /= num_batch
+        print("TEST: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss))
         
         self.test_tot_loss = avg_tot_loss
         self.test_mse_loss = avg_mse_loss
+        self.test_smooth_loss = avg_smooth_loss
         self.test_entr_loss = avg_entr_loss
+        self.test_devr_loss = avg_devr_loss
         return avg_tot_loss
 
     def segment(self,dataset):
@@ -180,8 +215,11 @@ class AutoSegmenter:
                 inp.append(data_in.numpy())
                 data_in = data_in.to(self.device)
                 _,s,r = self.model(data_in)
-                segm.append(s.cpu().numpy())
-                rec.append(r.cpu().numpy())
+                s = s.cpu().numpy()
+                r = np.concatenate([rsamp.cpu().numpy() for rsamp in r],axis=1)
+                r = np.sum(s*r,axis=1,keepdims=True) 
+                segm.append(s)
+                rec.append(r)
         return np.concatenate(segm,axis=0),np.concatenate(rec,axis=0),np.concatenate(inp,axis=0)
 
     def classrec(self,dataset):
@@ -211,10 +249,14 @@ class AutoSegmenter:
             'epoch': epoch,
             'train_tot_loss': self.train_tot_loss,
             'train_mse_loss': self.train_mse_loss,
+            'train_smooth_loss': self.train_smooth_loss,
             'train_entr_loss': self.train_entr_loss,
+            'train_devr_loss': self.train_devr_loss,
             'test_tot_loss': self.test_tot_loss,
             'test_mse_loss': self.test_mse_loss,
+            'test_smooth_loss': self.test_smooth_loss,
             'test_entr_loss': self.test_entr_loss,
+            'test_devr_loss': self.test_devr_loss,
         }
         checkpoint_path = self.get_checkpoint_path(epoch)
         if os.path.exists(checkpoint_path):

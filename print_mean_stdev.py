@@ -19,6 +19,17 @@ for data in loader:
     stdev += ((data-mean)*(data-mean)).mean()
 stdev = np.sqrt(stdev/len(train_data))
 
+minm,maxm = np.inf,0
+for data in loader:
+    mindata,maxdata = data.min(),data.max()
+    if mindata<minm:
+        minm = mindata
+    if maxdata>maxm:
+        maxm = maxdata
+
+mean = mean/len(train_data)
+
 print("mean: " + str(mean))
 print("stdev: " + str(stdev))
-
+print("max: " + str(maxm))
+print("min: " + str(minm))

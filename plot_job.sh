@@ -7,4 +7,6 @@
 ##SBATCH --license=lscratche
 #SBATCH -o /usr/WS2/tbidata/workspace_aditya/Devs/autoseg/log_plot.txt
 
+source ~/.bashrc
+conda activate pytorch
 python demo_plot.py
