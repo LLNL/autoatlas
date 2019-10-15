@@ -1,10 +1,14 @@
 import torch
 
 class UNet3D(torch.nn.Module):
-    def __init__(self,num_labels,kernel_size=3,filters=32,depth=4,batch_norm=False,pad_type='SAME'):
+    def __init__(self,num_labels,kernel_size=3,filters=32,blocks=7,batch_norm=False,pad_type='SAME'):
         super(UNet3D,self).__init__()
         self.kernel_size = kernel_size
-        self.depth = depth
+        self.blocks = blocks
+
+        if self.blocks % 2 == 0:
+            raise ValueError('Number of UNet blocks must be odd')
+
         self.pad_type = pad_type
         if pad_type == 'VALID':
             pad_width = 0
@@ -13,26 +17,26 @@ class UNet3D(torch.nn.Module):
         else:
             raise ValueError("ERROR: pad_type must be either VALID or SAME")
 
-        self.encoders = torch.nn.ModuleList([UNetEncoder3D(1,filters*2,kernel_size,pad_width,batch_norm)])
-        for _ in range(depth-2):
+        self.encoders = torch.nn.ModuleList([UNetEncoder3D(in_filters=1,out_filters=filters*2,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
+        for _ in range(blocks//2-1):
             filters *= 2
-            enc = UNetEncoder3D(filters,2*filters,kernel_size,pad_width,batch_norm) 
+            enc = UNetEncoder3D(in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm) 
             self.encoders.append(enc)
   
         filters *= 2
-        self.decoders = torch.nn.ModuleList([UNetDecoder3D(filters,2*filters,kernel_size,pad_width,batch_norm)])
-        for _ in range(depth-2):
-            dec = UNetDecoder3D(filters+filters*2,filters,kernel_size,pad_width,batch_norm)
+        self.decoders = torch.nn.ModuleList([UNetDecoder3D(in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
+        for _ in range(blocks//2-1):
+            dec = UNetDecoder3D(in_filters=filters+filters*2,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)
             self.decoders.append(dec)
             filters = filters//2
             #Division using // ensures return value is integer
 
         self.output = torch.nn.Sequential(
-                        torch.nn.Conv3d(filters+2*filters,filters,kernel_size,padding=pad_width),
+                        torch.nn.Conv3d(in_channels=filters+2*filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True),
-                        torch.nn.Conv3d(filters,filters,kernel_size,padding=pad_width),
+                        torch.nn.Conv3d(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True),
-                        torch.nn.Conv3d(filters,num_labels,1,padding=0))
+                        torch.nn.Conv3d(in_channels=filters,out_channels=num_labels,kernel_size=1,padding=0))
                         #torch.nn.Softmax(dim=1))
 
     def forward(self,x):
@@ -63,9 +67,9 @@ class UNetEncoder3D(torch.nn.Module):
         super(UNetEncoder3D,self).__init__()
         
         self.model = torch.nn.Sequential(
-                        torch.nn.Conv3d(in_filters,out_filters//2,kernel_size,padding=pad_width),
+                        torch.nn.Conv3d(in_channels=in_filters,out_channels=out_filters//2,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True),
-                        torch.nn.Conv3d(out_filters//2,out_filters,kernel_size,padding=pad_width),
+                        torch.nn.Conv3d(in_channels=out_filters//2,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True))
         self.pool = torch.nn.MaxPool3d(2,padding=0)
 
@@ -78,17 +82,17 @@ class UNetDecoder3D(torch.nn.Module):
         super(UNetDecoder3D,self).__init__()
 
         self.model = torch.nn.Sequential(
-                            torch.nn.Conv3d(in_filters,out_filters,kernel_size,padding=pad_width),
+                            torch.nn.Conv3d(in_channels=in_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
                             torch.nn.ReLU(inplace=True), 
-                            torch.nn.Conv3d(out_filters,out_filters,kernel_size,padding=pad_width),
+                            torch.nn.Conv3d(in_channels=out_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
                             torch.nn.ReLU(inplace=True), 
-                            torch.nn.ConvTranspose3d(out_filters,out_filters,2,padding=0,stride=2))
+                            torch.nn.ConvTranspose3d(in_channels=out_filters,out_channels=out_filters,kernel_size=2,padding=0,stride=2))
 
     def forward(self,x):
         return self.model(x)
 
 class AutoEnc(torch.nn.Module):
-    def __init__(self,kernel_size=3,filters=8,depth=4,pool=2,batch_norm=False,pad_type='SAME'):
+    def __init__(self,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pad_type='SAME'):
         super(AutoEnc,self).__init__()
         if pad_type == 'VALID':
             pad_width = 0
@@ -100,32 +104,40 @@ class AutoEnc(torch.nn.Module):
         if kernel_size%2==0:
             raise ValueError("ERROR: Kernel size must be odd")
 
-        if depth%2!=0:
-            raise ValueError("ERROR: Depth parameter must be even")
+        if depth%2==0:
+            raise ValueError("ERROR: Depth parameter must be odd")
 
-        self.encoders = torch.nn.ModuleList([])
+        self.encoders,self.dwnpools = torch.nn.ModuleList([]),torch.nn.ModuleList([])
         for i in range(depth//2):
             in_filters = 2 if i==0 else filters
             enc = torch.nn.Sequential(
-                        torch.nn.Conv3d(in_filters,filters,kernel_size,padding=pad_width),
-                        torch.nn.ReLU(inplace=True),
-                        torch.nn.MaxPool3d(pool,padding=0))
+                        torch.nn.Conv3d(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
+                        torch.nn.ReLU(inplace=True))
             self.encoders.append(enc)
+            self.dwnpools.append(torch.nn.MaxPool3d(kernel_size=pool,stride=pool,return_indices=True))
   
-        self.decoders = torch.nn.ModuleList([])
+        self.decoders,self.uppools = torch.nn.ModuleList([]),torch.nn.ModuleList([])
         for i in range(depth//2):
-            out_filters = 1 if i==(depth//2)-1 else filters
             dec = torch.nn.Sequential(
-                            torch.nn.Conv3d(filters,filters,kernel_size,padding=pad_width),
-                            torch.nn.ReLU(inplace=True), 
-                            torch.nn.ConvTranspose3d(filters,out_filters,pool,padding=0,stride=pool))
+                            torch.nn.Conv3d(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
+                            torch.nn.ReLU(inplace=True)) 
+                            #torch.nn.ConvTranspose3d(filters,out_filters,pool,padding=0,stride=pool))
             self.decoders.append(dec)
+            self.uppools.append(torch.nn.MaxUnpool3d(kernel_size=pool,stride=pool))
+        
+        self.final = torch.nn.Conv3d(in_channels=filters,out_channels=1,kernel_size=1,padding=0)
 
     def forward(self,x):
-        features = []
-        for enc in self.encoders:
+        indices,shapes = [],[]
+        for enc,pl in zip(self.encoders,self.dwnpools):
             x = enc(x)
-        for dec in self.decoders:
+            shapes.append(x.size())
+            x,idx = pl(x)
+            indices.append(idx)
+
+        for dec,pl in zip(self.decoders,self.uppools):
             x = dec(x)
-        return x
+            x = pl(x,indices=indices.pop(),output_size=shapes.pop())
+        
+        return self.final(x)
 

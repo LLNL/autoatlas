@@ -2,6 +2,8 @@
 import nibabel as nib
 import h5py
 import numpy as np
+from skimage.util import montage
+from skimage.filters import threshold_otsu
 import torch
 from torch.utils.data import Dataset, DataLoader
 
@@ -62,6 +64,11 @@ class HCPDataset(Dataset):
             vol = vol-self.mean
         if self.stdev is not None:
             vol = vol/self.stdev       
-        vol = torch.from_numpy(vol)
-        return torch.unsqueeze(vol,dim=0).float()
+    
+        thresh = threshold_otsu(montage(vol,grid_shape=(1,vol.shape[0])))
+        mask = (vol>thresh/4).astype(float) #Divide by 4 is necessary to avoid brain regions in background. But, this may be hacky. Fix it?
+
+        vol = torch.unsqueeze(torch.from_numpy(vol),dim=0)
+        mask = torch.unsqueeze(torch.from_numpy(mask),dim=0)
+        return vol.float(),mask.float()
         

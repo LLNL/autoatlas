@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import nibabel as nib
 import numpy as np
 
 def stack_plot(vols,filename,title='',sldim='z',nrows=2):
@@ -23,3 +24,8 @@ def stack_plot(vols,filename,title='',sldim='z',nrows=2):
     fig.tight_layout()
     plt.savefig(filename)
     plt.close()
+
+def write_nifti(vol,filename):
+    vol = np.swapaxes(vol,0,-1)
+    img = nib.Nifti1Image(vol,np.eyes(4))
+    img.to_filename(filename) 

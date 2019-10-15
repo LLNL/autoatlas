@@ -1,13 +1,13 @@
 import matplotlib.pyplot as plt
 from segmenter import AutoSegmenter
 from data import HCPDataset
-from plot import stack_plot
+from plot import stack_plot,write_nifti
 import os
 import numpy as np
 
 #Parameters
-checkpoint_dir='./checkpoints_smooth0.1/'
-num_epochs = 52
+checkpoint_dir='./checkpoints/'
+num_epochs = 44
 num_labels = 16
 dims = [80,96,80]
 mean = 135.4005
@@ -19,9 +19,6 @@ test_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/test'
 #Datasets
 train_files = [os.path.join(train_folder,f) for f in os.listdir(train_folder) if f[-7:]=='.nii.gz']
 test_files = [os.path.join(test_folder,f) for f in os.listdir(test_folder) if f[-7:]=='.nii.gz']
-
-train_data = HCPDataset(train_files[0],dims,mean,stdev)
-test_data = HCPDataset(test_files[0],dims,mean,stdev)
 
 train_tot,test_tot,train_mse,test_mse,train_smooth,test_smooth,train_entr,test_entr,train_devr,test_devr = [],[],[],[],[],[],[],[],[],[]
 for load_epoch in range(num_epochs):
@@ -77,16 +74,35 @@ plt.legend(['train','test'])
 plt.savefig(checkpoint_dir+'/devr_loss.png')
 plt.close()
 
+train_data = HCPDataset(train_files[:10],dims,mean,stdev)
+test_data = HCPDataset(test_files[:10],dims,mean,stdev)
+
 test_seg,test_rec,test_vol = autoseg.segment(test_data)
 test_auto,_ = autoseg.classrec(test_data)
 
-stack_plot(np.stack([test_vol[0,0],test_rec[0,0]],axis=0),'gtvsrec_z.png',sldim='z',nrows=1)
-stack_plot(np.stack([test_vol[0,0],test_rec[0,0]],axis=0),'gtvsrec_y.png',sldim='y',nrows=1)
-stack_plot(np.stack([test_vol[0,0],test_rec[0,0]],axis=0),'gtvsrec_x.png',sldim='x',nrows=1)
-stack_plot(test_seg[0],checkpoint_dir+'/seg_z.png',sldim='z',nrows=2)
-stack_plot(test_seg[0],checkpoint_dir+'/seg_y.png',sldim='y',nrows=2)
-stack_plot(test_seg[0],checkpoint_dir+'/seg_x.png',sldim='x',nrows=2)
-stack_plot(test_auto[0],checkpoint_dir+'/auto_z.png',sldim='z',nrows=2)
-stack_plot(test_auto[0],checkpoint_dir+'/auto_y.png',sldim='y',nrows=2)
-stack_plot(test_auto[0],checkpoint_dir+'/auto_x.png',sldim='x',nrows=2)
+for i in range(10): 
+    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),checkpoint_dir+'/gtvsrec_z_{}.png'.format(i),sldim='z',nrows=1)
+    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),checkpoint_dir+'/gtvsrec_y_{}.png'.format(i),sldim='y',nrows=1)
+    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),checkpoint_dir+'/gtvsrec_x_{}.png'.format(i),sldim='x',nrows=1)
+    stack_plot(test_seg[i],checkpoint_dir+'/seg_z_{}.png'.format(i),sldim='z',nrows=2)
+    stack_plot(test_seg[i],checkpoint_dir+'/seg_y_{}.png'.format(i),sldim='y',nrows=2)
+    stack_plot(test_seg[i],checkpoint_dir+'/seg_x_{}.png'.format(i),sldim='x',nrows=2)
+    #write_nifti(test_seg[i],checkpoint_dir+'/seg_{}.nii.gz'.format(i))
+    stack_plot(test_auto[i],checkpoint_dir+'/auto_z_{}.png'.format(i),sldim='z',nrows=2)
+    stack_plot(test_auto[i],checkpoint_dir+'/auto_y_{}.png'.format(i),sldim='y',nrows=2)
+    stack_plot(test_auto[i],checkpoint_dir+'/auto_x_{}.png'.format(i),sldim='x',nrows=2)
 
+test_seg,test_rec,test_vol = autoseg.segment(test_data,masked=True)
+test_auto,_ = autoseg.classrec(test_data,masked=True)
+for i in range(10):
+    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),checkpoint_dir+'/mk_gtvsrec_z_{}.png'.format(i),sldim='z',nrows=1)
+    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),checkpoint_dir+'/mk_gtvsrec_y_{}.png'.format(i),sldim='y',nrows=1)
+    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),checkpoint_dir+'/mk_gtvsrec_x_{}.png'.format(i),sldim='x',nrows=1)
+    stack_plot(test_seg[i],checkpoint_dir+'/mk_seg_z_{}.png'.format(i),sldim='z',nrows=2)
+    stack_plot(test_seg[i],checkpoint_dir+'/mk_seg_y_{}.png'.format(i),sldim='y',nrows=2)
+    stack_plot(test_seg[i],checkpoint_dir+'/mk_seg_x_{}.png'.format(i),sldim='x',nrows=2)
+    #write_nifti(test_seg[i],checkpoint_dir+'/seg_{}.nii.gz'.format(i))
+    stack_plot(test_auto[i],checkpoint_dir+'/mk_auto_z_{}.png'.format(i),sldim='z',nrows=2)
+    stack_plot(test_auto[i],checkpoint_dir+'/mk_auto_y_{}.png'.format(i),sldim='y',nrows=2)
+    stack_plot(test_auto[i],checkpoint_dir+'/mk_auto_x_{}.png'.format(i),sldim='x',nrows=2)
+ 

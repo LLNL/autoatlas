@@ -20,25 +20,34 @@ class CustomLoss:
         self.softmax = torch.nn.Softmax(dim=1)
         self.logsoftmax = torch.nn.LogSoftmax(dim=1)
         
-    def mse_loss(self,X,Ys,Z):
+    def mse_loss(self,gtruth,recs,seg,mask):
         mse_losses = []
-        for i,ysamp in enumerate(Ys):
-            mse_losses.append(torch.mean((X-ysamp)*Z[:,i:i+1,:,:,:]*(X-ysamp)))
-        return torch.sum(torch.stack(mse_losses))
+        den = torch.sum(mask,dim=(2,3,4))
+        num = torch.sum((gtruth-recs)*seg*mask*(gtruth-recs),dim=(2,3,4))
+        mse_losses = torch.sum(num/den,dim=1)
+        return torch.mean(mse_losses)
 
-    def smooth_loss(self,Z):
-        smooth_losses = []
+    def smooth_loss(self,seg,mask):
+        nums,dens = [],[]
         for (Nz,Ny,Nx) in self.neighs:
-            H = torch.cat((Z[:,:,-Nz:],    Z[:,:,:-Nz]),    dim=2)
+            H = torch.cat((seg[:,:,-Nz:],  seg[:,:,:-Nz]),  dim=2)
             H = torch.cat((H[:,:,:,-Ny:],  H[:,:,:,:-Ny]),  dim=3)
             H = torch.cat((H[:,:,:,:,-Nx:],H[:,:,:,:,:-Nx]),dim=4)
-            H = Z*H
-            smooth_losses.append(torch.mean(H,dim=(2,3,4)))   
-        smooth_loss = -torch.log(torch.sum(torch.mean(torch.stack(smooth_losses,dim=-1),dim=-1),dim=1))
+            H = seg*H
+            W = torch.cat((mask[:,:,-Nz:],  mask[:,:,:-Nz]),  dim=2)
+            W = torch.cat((W[:,:,:,-Ny:],  W[:,:,:,:-Ny]),  dim=3)
+            W = torch.cat((W[:,:,:,:,-Nx:],W[:,:,:,:,:-Nx]),dim=4)
+            W = mask*W
+            assert torch.max(W)==1.0
+            assert torch.min(W)==0.0
+            nums.append(torch.sum(H*W,dim=(2,3,4)))
+            dens.append(torch.sum(W,dim=(2,3,4)))
+        smooth_loss = torch.sum(torch.stack(nums,dim=-1),dim=-1)/torch.sum(torch.stack(dens,dim=-1),dim=-1)   
+        smooth_loss = -torch.log(torch.sum(smooth_loss,dim=1))
         return self.smooth_reg*torch.mean(smooth_loss)
 
-    def devr_loss(self,Z):
-        clp = torch.mean(Z,dim=(2,3,4))
+    def devr_loss(self,seg,mask):
+        clp = torch.sum(seg*mask,dim=(2,3,4))/torch.sum(mask,dim=(2,3,4))
         clp = -torch.log(clp/self.min_freqs)
         clp = torch.clamp(clp,min=0)
         return self.devr_reg*torch.mean(clp)
@@ -46,22 +55,22 @@ class CustomLoss:
     def entr_loss(self,Z,normZ): #Must reduce entropy at each voxel. Force each voxel to be a single class.
         return -self.entr_reg*torch.mean(normZ*self.logsoftmax(Z))/self.entr_norm
 
-    def loss(self,X,Z,Y):
-        #return self.mse_loss(X,Y)+self.smooth_loss(Z)+self.unif_loss(Z)+self.entr_loss(Z)
-        return self.mse_loss(X,Y)
-
 class AutoSegmenter:
     def __init__(self,num_labels,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
         self.lr = lr
         self.batch = batch
         self.device = device
         self.checkpoint_dir = checkpoint_dir
+        self.smooth_reg = smooth_reg
+        self.devr_reg = devr_reg
+        self.entr_reg = entr_reg
 
-        self.cnn = UNet3D(num_labels,kernel_size=3,filters=32,depth=4,batch_norm=False,pad_type='SAME')
+        self.cnn = UNet3D(num_labels,kernel_size=3,filters=64,blocks=7,batch_norm=False,pad_type='SAME')
    
         self.autoencs = torch.nn.ModuleList([])
         for _ in range(num_labels):
-            self.autoencs.append(AutoEnc(kernel_size=5,filters=8,depth=4,pool=4,batch_norm=False,pad_type='SAME')) 
+            self.autoencs.append(AutoEnc(kernel_size=7,filters=32,depth=5,pool=4,batch_norm=False,pad_type='SAME')) 
+            #self.autoencs.append(AutoEnc(kernel_size=7,filters=8,depth=4,pool=4,batch_norm=False,pad_type='SAME')) 
         self.model = SegmRecon(self.cnn,self.autoencs)
         self.model = self.model.to(self.device)
 
@@ -117,15 +126,26 @@ class AutoSegmenter:
        
         num_batch = 0 
         avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss = 0.0,0.0,0.0,0.0,0.0
-        for data_in in train_loader:
+        for data_in,mask_in in train_loader:
             data_in = data_in.to(self.device)
+            mask_in = mask_in.to(self.device)
+
             self.optimizer.zero_grad()
             seg,norm_seg,data_out = self.model(data_in)
             
-            mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg)
-            smooth_loss = self.criterion.smooth_loss(norm_seg)
-            entr_loss = self.criterion.entr_loss(seg,norm_seg)
-            devr_loss = self.criterion.devr_loss(norm_seg)
+            mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
+            if self.smooth_reg>0:
+                smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
+            else:
+                smooth_loss = torch.FloatTensor([0]).to(self.device)
+            if self.entr_reg>0:
+                entr_loss = self.criterion.entr_loss(seg,norm_seg)
+            else:
+                entr_loss = torch.FloatTensor([0]).to(self.device)
+            if self.devr_reg>0:
+                devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
+            else:
+                devr_loss = torch.FloatTensor([0]).to(self.device)
             tot_loss = mse_loss+smooth_loss+entr_loss+devr_loss
 
             tot_loss.backward()
@@ -167,14 +187,24 @@ class AutoSegmenter:
         num_batch = 0 
         avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss = 0.0,0.0,0.0,0.0,0.0
         with torch.no_grad():
-            for data_in in test_loader:
+            for data_in,mask_in in test_loader:
                 data_in = data_in.to(self.device)
+                mask_in = mask_in.to(self.device)
                 seg,norm_seg,data_out = self.model(data_in)
 
-                mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg)
-                smooth_loss = self.criterion.smooth_loss(norm_seg)
-                entr_loss = self.criterion.entr_loss(seg,norm_seg)
-                devr_loss = self.criterion.devr_loss(norm_seg)
+                mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
+                if self.smooth_reg>0:
+                    smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
+                else:
+                    smooth_loss = torch.FloatTensor([0]).to(self.device)
+                if self.entr_reg>0:
+                    entr_loss = self.criterion.entr_loss(seg,norm_seg)
+                else:
+                    entr_loss = torch.FloatTensor([0]).to(self.device)
+                if self.devr_reg>0:
+                    devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
+                else:
+                    devr_loss = torch.FloatTensor([0]).to(self.device)
                 tot_loss = mse_loss+smooth_loss+entr_loss+devr_loss
                 
                 batch_mse_loss = mse_loss.item()
@@ -205,38 +235,47 @@ class AutoSegmenter:
         self.test_devr_loss = avg_devr_loss
         return avg_tot_loss
 
-    def segment(self,dataset):
+    def segment(self,dataset,masked=False):
         loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
         self.model.eval()
         
         inp,segm,rec = [],[],[]
         with torch.no_grad():
-            for idx,data_in in enumerate(loader):
+            for idx,(data_in,mask_in) in enumerate(loader):
                 inp.append(data_in.numpy())
                 data_in = data_in.to(self.device)
                 _,s,r = self.model(data_in)
                 s = s.cpu().numpy()
-                r = np.concatenate([rsamp.cpu().numpy() for rsamp in r],axis=1)
-                r = np.sum(s*r,axis=1,keepdims=True) 
-                segm.append(s)
+                r = r.cpu().numpy()
+                if masked:
+                    mk = mask_in.cpu().numpy()
+                    r = np.sum(s*r*mk,axis=1,keepdims=True) 
+                    segm.append(s*mk)
+                else:
+                    r = np.sum(s*r,axis=1,keepdims=True) 
+                    segm.append(s)
                 rec.append(r)
         return np.concatenate(segm,axis=0),np.concatenate(rec,axis=0),np.concatenate(inp,axis=0)
 
-    def classrec(self,dataset):
+    def classrec(self,dataset,masked=False):
         loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
         self.model.eval()
         inp,recs = [],[]
         with torch.no_grad():
-            for idx,data_in in enumerate(loader):
+            for idx,(data_in,mask_in) in enumerate(loader):
                 inp.append(data_in.numpy())
                 data_in = data_in.to(self.device)
                 clrecs = []
                 _,segm,_ = self.model(data_in)
+                mk = mask_in.cpu().numpy()
                 for i,aenc in enumerate(self.autoencs):
                     z = [data_in*segm[:,i:i+1],data_in*(1-segm[:,i:i+1])]
                     z = torch.cat(z,dim=1)
-                    r = aenc(z)
-                    clrecs.append(r.cpu().numpy())
+                    r = aenc(z).cpu().numpy()
+                    if masked:
+                        clrecs.append(r*mk)
+                    else:
+                        clrecs.append(r)
                 recs.append(np.concatenate(clrecs,axis=1))
         return np.concatenate(recs,axis=0),np.concatenate(inp,axis=0)
 
