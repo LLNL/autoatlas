@@ -5,6 +5,7 @@ from models import SegmRecon
 from torch.utils.data import DataLoader
 import progressbar
 import numpy as np
+import multiprocessing as mp
 
 class CustomLoss:
     def __init__(self,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01):
@@ -65,11 +66,11 @@ class AutoSegmenter:
         self.devr_reg = devr_reg
         self.entr_reg = entr_reg
 
-        self.cnn = UNet3D(num_labels,kernel_size=3,filters=64,blocks=7,batch_norm=False,pad_type='SAME')
+        self.cnn = UNet3D(num_labels,kernel_size=3,filters=64,blocks=9,batch_norm=False,pad_type='SAME')
    
         self.autoencs = torch.nn.ModuleList([])
         for _ in range(num_labels):
-            self.autoencs.append(AutoEnc(kernel_size=7,filters=32,depth=5,pool=4,batch_norm=False,pad_type='SAME')) 
+            self.autoencs.append(AutoEnc(kernel_size=3,filters=32,depth=9,pool=2,batch_norm=False,pad_type='SAME')) 
             #self.autoencs.append(AutoEnc(kernel_size=7,filters=8,depth=4,pool=4,batch_norm=False,pad_type='SAME')) 
         self.model = SegmRecon(self.cnn,self.autoencs)
         self.model = self.model.to(self.device)
@@ -120,7 +121,9 @@ class AutoSegmenter:
             os.makedirs(self.checkpoint_dir)
 
     def train(self,dataset):
-        train_loader = DataLoader(dataset,batch_size=self.batch,shuffle=True)
+        num_workers = min(self.batch,mp.cpu_count())
+        print("Using {} number of workers to load data for training".format(num_workers))
+        train_loader = DataLoader(dataset,batch_size=self.batch,shuffle=True,num_workers=num_workers)
 
         self.model.train()
        
@@ -180,7 +183,9 @@ class AutoSegmenter:
         return avg_tot_loss
 
     def test(self,dataset):
-        test_loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
+        num_workers = min(self.batch,mp.cpu_count())
+        print("Using {} number of workers to load data for testing".format(num_workers))
+        test_loader = DataLoader(dataset,batch_size=self.batch,shuffle=False,num_workers=num_workers)
         
         self.model.eval()
         
@@ -236,7 +241,9 @@ class AutoSegmenter:
         return avg_tot_loss
 
     def segment(self,dataset,masked=False):
-        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
+        num_workers = min(self.batch,mp.cpu_count())
+        print("Using {} number of workers to load data for segmentation".format(num_workers))
+        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False,num_workers=num_workers)
         self.model.eval()
         
         inp,segm,rec = [],[],[]
@@ -258,7 +265,9 @@ class AutoSegmenter:
         return np.concatenate(segm,axis=0),np.concatenate(rec,axis=0),np.concatenate(inp,axis=0)
 
     def classrec(self,dataset,masked=False):
-        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
+        num_workers = min(self.batch,mp.cpu_count())
+        print("Using {} number of workers to load data for class reconstruction".format(num_workers))
+        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False,num_workers=num_workers)
         self.model.eval()
         inp,recs = [],[]
         with torch.no_grad():
