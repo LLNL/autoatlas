@@ -67,11 +67,11 @@ class AutoSegmenter:
         self.devr_reg = devr_reg
         self.entr_reg = entr_reg
 
-        self.cnn = UNet3D(num_labels,kernel_size=3,filters=64,blocks=9,batch_norm=False,pad_type='SAME')
+        self.cnn = UNet3D(num_labels,kernel_size=3,filters=32,blocks=9,batch_norm=False,pad_type='SAME')
    
         self.autoencs = torch.nn.ModuleList([])
         for _ in range(num_labels):
-            self.autoencs.append(AutoEnc(kernel_size=3,filters=32,depth=9,pool=2,batch_norm=False,pad_type='SAME')) 
+            self.autoencs.append(AutoEnc(kernel_size=7,filters=16,depth=8,pool=2,batch_norm=False,pad_type='SAME')) 
             #self.autoencs.append(AutoEnc(kernel_size=7,filters=8,depth=4,pool=4,batch_norm=False,pad_type='SAME')) 
         self.model = SegmRecon(self.cnn,self.autoencs)
         self.model = self.model.to(self.device)
@@ -257,38 +257,37 @@ class AutoSegmenter:
                 r = r.cpu().numpy()
                 if masked:
                     mk = mask_in.cpu().numpy()
-                    r = np.sum(s*r*mk,axis=1,keepdims=True) 
                     segm.append(s*mk)
+                    rec.append(r*mk)
                 else:
-                    r = np.sum(s*r,axis=1,keepdims=True) 
                     segm.append(s)
-                rec.append(r)
+                    rec.append(r)
         return np.concatenate(segm,axis=0),np.concatenate(rec,axis=0),np.concatenate(inp,axis=0)
 
-    def classrec(self,dataset,masked=False):
-        num_workers = min(self.batch,mp.cpu_count())
-        print("Using {} number of workers to load data for class reconstruction".format(num_workers))
-        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False,num_workers=num_workers)
-        self.model.eval()
-        inp,recs = [],[]
-        with torch.no_grad():
-            for idx,(data_in,mask_in) in enumerate(loader):
-                inp.append(data_in.numpy())
-                data_in = data_in.to(self.device)
-                clrecs = []
-                _,segm,_ = self.model(data_in)
-                segm_np = segm.cpu().numpy()
-                mk = mask_in.cpu().numpy()
-                for i,aenc in enumerate(self.autoencs):
-                    z = [data_in*segm[:,i:i+1],data_in*(1-segm[:,i:i+1])]
-                    z = torch.cat(z,dim=1)
-                    r = aenc(z).cpu().numpy()
-                    if masked:
-                        clrecs.append(r*mk)
-                    else:
-                        clrecs.append(r)
-                recs.append(np.concatenate(clrecs,axis=1)*segm_np)
-        return np.concatenate(recs,axis=0),np.concatenate(inp,axis=0)
+#    def classrec(self,dataset,masked=False):
+#        num_workers = min(self.batch,mp.cpu_count())
+#        print("Using {} number of workers to load data for class reconstruction".format(num_workers))
+#        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False,num_workers=num_workers)
+#        self.model.eval()
+#        inp,recs = [],[]
+#        with torch.no_grad():
+#            for idx,(data_in,mask_in) in enumerate(loader):
+#                inp.append(data_in.numpy())
+#                data_in = data_in.to(self.device)
+#                clrecs = []
+#                _,segm,_ = self.model(data_in)
+#                segm_np = segm.cpu().numpy()
+#                mk = mask_in.cpu().numpy()
+#                for i,aenc in enumerate(self.autoencs):
+#                    z = [data_in*segm[:,i:i+1],data_in*(1-segm[:,i:i+1])]
+#                    z = torch.cat(z,dim=1)
+#                    r = aenc(z).cpu().numpy()
+#                    if masked:
+#                        clrecs.append(r*mk)
+#                    else:
+#                        clrecs.append(r)
+#                recs.append(np.concatenate(clrecs,axis=1)*segm_np)
+#        return np.concatenate(recs,axis=0),np.concatenate(inp,axis=0)
 
     def get_checkpoint_path(self, epoch):
         return os.path.join(self.checkpoint_dir, 'model_epoch_{}.pth'.format(epoch))

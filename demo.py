@@ -7,27 +7,28 @@ import os
 #Regularization parameters
 entr_reg = 0.0
 smooth_reg = 0.1
-devr_reg = 0.0
-min_freqs = 0.05 
-num_labels = 8
+devr_reg = 1.0
+min_freqs = 0.03 
+num_labels = 16
 
 #Parameters
-checkpoint_dir='./checkpoints_devr{}_smooth{}/'.format(devr_reg,smooth_reg)
+checkpoint_dir='./labels{}_devr{}_minfreqs{}_smooth{}/'.format(num_labels,devr_reg,min_freqs,smooth_reg)
 #learning_rate = 1e-4
 learning_rate = 1e-4
-batch = 4
+batch = 32
 num_epochs = 200
 load_epoch = -1
 num_test = 100
 #dims = None
-dims = [80,96,80]
+dims = [48,48,48]
 #dims = [176,208,176]
-mean = 135.4005
+#mean = 135.4005
+mean = None
 stdev = 286.3180
 #train_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/train'
 #test_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/test'
-train_folder = '/p/gscratchr/mohan3/Data/T1_decimate/2mm/train'
-test_folder = '/p/gscratchr/mohan3/Data/T1_decimate/2mm/test'
+train_folder = '/p/gscratchr/mohan3/Data/T1_decimate/4mm/train'
+test_folder = '/p/gscratchr/mohan3/Data/T1_decimate/4mm/test'
 
 #Datasets
 train_files = [os.path.join(train_folder,f) for f in os.listdir(train_folder) if f[-7:]=='.nii.gz']

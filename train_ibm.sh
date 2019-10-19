@@ -2,7 +2,7 @@
 #BSUB -nnodes 1                   #number of nodes
 #BSUB -W 720                      #walltime in minutes
 #BSUB -G guests                   #account
-#BSUB -o checkpoints_devr0.0_smooth0.1/log.txt             #stdout
+#BSUB -o labels16_devr1.0_minfreqs0.03_smooth0.1/log.txt             #stdout
 #BSUB -J tbi                    #name of job
 #BSUB -q pbatch                   #queue to use
 

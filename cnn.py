@@ -133,43 +133,29 @@ class AutoEnc(torch.nn.Module):
         if kernel_size%2==0:
             raise ValueError("ERROR: Kernel size must be odd")
 
-        if depth%2==0:
-            raise ValueError("ERROR: Depth parameter must be odd")
+        if depth%2!=0:
+            raise ValueError("ERROR: Depth parameter must be even")
 
-        self.encoders,self.dwnpools = torch.nn.ModuleList([]),torch.nn.ModuleList([])
+        self.encoders = torch.nn.ModuleList([])
         for i in range(depth//2):
             in_filters = 2 if i==0 else filters
             enc = torch.nn.Sequential(
-                        torch.nn.Conv3d(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
-                        torch.nn.ReLU(inplace=True))
+                torch.nn.Conv3d(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool),
+                torch.nn.ReLU(inplace=True))
             self.encoders.append(enc)
-            #self.dwnpools.append(torch.nn.MaxPool3d(kernel_size=pool,stride=pool,return_indices=True))
-            self.dwnpools.append(torch.nn.Conv3d(in_channels=filters,out_channels=filters,kernel_size=pool,stride=pool))
-        self.decoders,self.uppools = torch.nn.ModuleList([]),torch.nn.ModuleList([])
-        for i in range(depth//2):
-            dec = torch.nn.Sequential(
-                            torch.nn.Conv3d(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
-                            torch.nn.ReLU(inplace=True)) 
-                            #torch.nn.ConvTranspose3d(filters,out_filters,pool,padding=0,stride=pool))
-            self.decoders.append(dec)
-            #self.uppools.append(torch.nn.MaxUnpool3d(kernel_size=pool,stride=pool))
-            self.uppools.append(torch.nn.ConvTranspose3d(in_channels=filters,out_channels=filters,kernel_size=pool,stride=pool))
         
-        self.final = torch.nn.Conv3d(in_channels=filters,out_channels=1,kernel_size=1,padding=0)
-
+        self.decoders = torch.nn.ModuleList([])
+        for i in range(depth//2):
+            out_filters = 1 if i==depth//2-1 else filters
+            dec = torch.nn.Sequential(
+                torch.nn.ConvTranspose3d(in_channels=filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1),
+                torch.nn.ReLU(inplace=True)) 
+            self.decoders.append(dec)
+        
     def forward(self,x):
-        #indices,shapes = [],[]
-        for enc,pl in zip(self.encoders,self.dwnpools):
+        for enc in self.encoders:
             x = enc(x)
-            #shapes.append(x.size())
-            #x,idx = pl(x)
-            #indices.append(idx)
-            x = pl(x)
-
-        for dec,pl in zip(self.decoders,self.uppools):
+        for dec in self.decoders:
             x = dec(x)
-            #x = pl(x,indices=indices.pop(),output_size=shapes.pop())
-            x = pl(x)
-
-        return self.final(x)
+        return x
 
