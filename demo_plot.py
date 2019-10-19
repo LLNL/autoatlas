@@ -6,15 +6,17 @@ import os
 import numpy as np
 
 #Parameters
-checkpoint_dir='./checkpoints/'
-num_epochs = 44
-num_labels = 16
+checkpoint_dir='./checkpoints_smooth0.1/'
+num_epochs = 55
+num_labels = 8
 dims = [80,96,80]
 mean = 135.4005
 stdev = 286.3180
 
-train_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/train'
-test_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/test'
+#train_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/train'
+#test_folder = '/p/lustre3/kaplan7/T1_decimate/2mm/test'
+train_folder = '/p/gscratchr/mohan3/Data/T1_decimate/2mm/train'
+test_folder = '/p/gscratchr/mohan3/Data/T1_decimate/2mm/test'
 
 #Datasets
 train_files = [os.path.join(train_folder,f) for f in os.listdir(train_folder) if f[-7:]=='.nii.gz']

@@ -1,5 +1,34 @@
 import torch
 
+#class DwnPool(torch.nn.Module):
+#    def __init__(mode,stride=2,filters=None):
+#        if mode == 'maxpool': 
+#            self.pool = torch.nn.MaxPool3d(kernel_size=stride,stride=stride,return_indices=True)
+#        elif mode == 'cnn': 
+#            self.pool = torch.nn.Conv3d(in_channels=filters,out_channels=filters,kernel_size=stride,stride=stride)
+#            if filters is None:
+#                raise ValueError('Filter/channel length must be specified for conv pool')
+#        else:
+#            raise ValueError('Only maxpool and cnn pooling are supported')
+
+#    def forward(x):
+#        if mode == 'maxpool':
+#            x,y = self.pool(x) 
+#            return x,y
+#        elif mode == 'cnn':
+#            return self.pool(x)
+
+#class UpPool(torch.nn.Module):
+#    def __init__(mode,stride=2,filters=None):
+#        if mode == 'maxpool': 
+#            self.pool = torch.nn.MaxUnpool3d(kernel_size=stride,stride=stride)
+#        elif mode == 'cnn':
+#            self.pool = torch.nn.ConvTranspose3d(in_channels=filters,out_channels=filters,kernel_size=stride,stride=stride,output_padding=out_pad)
+#            if filters is None:
+#                raise ValueError('Filter/channel length must be specified for conv pool')
+#        else:
+#            raise ValueError('Only maxpool and cnn pooling are supported')
+
 class UNet3D(torch.nn.Module):
     def __init__(self,num_labels,kernel_size=3,filters=32,blocks=7,batch_norm=False,pad_type='SAME'):
         super(UNet3D,self).__init__()
@@ -92,7 +121,7 @@ class UNetDecoder3D(torch.nn.Module):
         return self.model(x)
 
 class AutoEnc(torch.nn.Module):
-    def __init__(self,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pad_type='SAME'):
+    def __init__(self,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pool_type='conv',pad_type='SAME'):
         super(AutoEnc,self).__init__()
         if pad_type == 'VALID':
             pad_width = 0
@@ -114,8 +143,8 @@ class AutoEnc(torch.nn.Module):
                         torch.nn.Conv3d(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True))
             self.encoders.append(enc)
-            self.dwnpools.append(torch.nn.MaxPool3d(kernel_size=pool,stride=pool,return_indices=True))
-  
+            #self.dwnpools.append(torch.nn.MaxPool3d(kernel_size=pool,stride=pool,return_indices=True))
+            self.dwnpools.append(torch.nn.Conv3d(in_channels=filters,out_channels=filters,kernel_size=pool,stride=pool))
         self.decoders,self.uppools = torch.nn.ModuleList([]),torch.nn.ModuleList([])
         for i in range(depth//2):
             dec = torch.nn.Sequential(
@@ -123,21 +152,24 @@ class AutoEnc(torch.nn.Module):
                             torch.nn.ReLU(inplace=True)) 
                             #torch.nn.ConvTranspose3d(filters,out_filters,pool,padding=0,stride=pool))
             self.decoders.append(dec)
-            self.uppools.append(torch.nn.MaxUnpool3d(kernel_size=pool,stride=pool))
+            #self.uppools.append(torch.nn.MaxUnpool3d(kernel_size=pool,stride=pool))
+            self.uppools.append(torch.nn.ConvTranspose3d(in_channels=filters,out_channels=filters,kernel_size=pool,stride=pool))
         
         self.final = torch.nn.Conv3d(in_channels=filters,out_channels=1,kernel_size=1,padding=0)
 
     def forward(self,x):
-        indices,shapes = [],[]
+        #indices,shapes = [],[]
         for enc,pl in zip(self.encoders,self.dwnpools):
             x = enc(x)
-            shapes.append(x.size())
-            x,idx = pl(x)
-            indices.append(idx)
+            #shapes.append(x.size())
+            #x,idx = pl(x)
+            #indices.append(idx)
+            x = pl(x)
 
         for dec,pl in zip(self.decoders,self.uppools):
             x = dec(x)
-            x = pl(x,indices=indices.pop(),output_size=shapes.pop())
-        
+            #x = pl(x,indices=indices.pop(),output_size=shapes.pop())
+            x = pl(x)
+
         return self.final(x)
 

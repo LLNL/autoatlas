@@ -6,13 +6,13 @@ import os
 
 #Regularization parameters
 entr_reg = 0.0
-smooth_reg = 0.1
-devr_reg = 0.0
+smooth_reg = 0.01
+devr_reg = 1.0
 min_freqs = 0.05 
 num_labels = 8
 
 #Parameters
-checkpoint_dir='./checkpoints_devr{}_smooth{}/'.format(devr_reg,smooth_reg)
+checkpoint_dir='./checkpoints_smooth{}/'.format(smooth_reg)
 #learning_rate = 1e-4
 learning_rate = 1e-4
 batch = 4

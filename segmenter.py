@@ -20,6 +20,7 @@ class CustomLoss:
                        [1,1,-1], [1,1,0], [1,1,1]]
         self.softmax = torch.nn.Softmax(dim=1)
         self.logsoftmax = torch.nn.LogSoftmax(dim=1)
+        self.eps = 1e-10
         
     def mse_loss(self,gtruth,recs,seg,mask):
         mse_losses = []
@@ -49,7 +50,7 @@ class CustomLoss:
 
     def devr_loss(self,seg,mask):
         clp = torch.sum(seg*mask,dim=(2,3,4))/torch.sum(mask,dim=(2,3,4))
-        clp = -torch.log(clp/self.min_freqs)
+        clp = -torch.log((clp+self.eps*self.min_freqs)/self.min_freqs)
         clp = torch.clamp(clp,min=0)
         return self.devr_reg*torch.mean(clp)
     
@@ -276,6 +277,7 @@ class AutoSegmenter:
                 data_in = data_in.to(self.device)
                 clrecs = []
                 _,segm,_ = self.model(data_in)
+                segm_np = segm.cpu().numpy()
                 mk = mask_in.cpu().numpy()
                 for i,aenc in enumerate(self.autoencs):
                     z = [data_in*segm[:,i:i+1],data_in*(1-segm[:,i:i+1])]
@@ -285,7 +287,7 @@ class AutoSegmenter:
                         clrecs.append(r*mk)
                     else:
                         clrecs.append(r)
-                recs.append(np.concatenate(clrecs,axis=1))
+                recs.append(np.concatenate(clrecs,axis=1)*segm_np)
         return np.concatenate(recs,axis=0),np.concatenate(inp,axis=0)
 
     def get_checkpoint_path(self, epoch):
