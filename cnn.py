@@ -146,10 +146,12 @@ class AutoEnc(torch.nn.Module):
         
         self.decoders = torch.nn.ModuleList([])
         for i in range(depth//2):
-            out_filters = 1 if i==depth//2-1 else filters
-            dec = torch.nn.Sequential(
-                torch.nn.ConvTranspose3d(in_channels=filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1),
-                torch.nn.ReLU(inplace=True)) 
+            if i==depth//2-1:
+                dec = torch.nn.ConvTranspose3d(in_channels=filters,out_channels=1,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1) 
+            else: 
+                dec = torch.nn.Sequential(
+                    torch.nn.ConvTranspose3d(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1),
+                    torch.nn.ReLU(inplace=True)) 
             self.decoders.append(dec)
         
     def forward(self,x):
