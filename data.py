@@ -45,7 +45,7 @@ class HCPDataset(Dataset):
         if not isinstance(files,list):
             files = [files]
         self.files = files
-        self.dims = np.array(dims,dtype=int)
+        self.dims = dims
         self.mean = mean
         self.stdev = stdev
 
@@ -55,6 +55,7 @@ class HCPDataset(Dataset):
     def __getitem__(self,idx):
         vol = nib.load(self.files[idx]).get_fdata()
         if self.dims is not None:
+            self.dims = np.array(self.dims,dtype=int)
             iB = (np.array(vol.shape,dtype=int)-self.dims)//2
             iE = self.dims+iB
             if iB[0]>=0: 

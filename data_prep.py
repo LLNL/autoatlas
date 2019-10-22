@@ -3,9 +3,9 @@ from data import HCPDataset
 import os
 import torch
 
-train_folder = '/p/gscratchr/mohan3/Data/T1_decimate/2mm/train'
+train_folder = '/p/gscratchr/mohan3/Data/T1_decimate/3mm/train'
 train_files = [os.path.join(train_folder,f) for f in os.listdir(train_folder) if f[-7:]=='.nii.gz']
-test_folder = '/p/gscratchr/mohan3/Data/T1_decimate/2mm/test'
+test_folder = '/p/gscratchr/mohan3/Data/T1_decimate/3mm/test'
 test_files = [os.path.join(train_folder,f) for f in os.listdir(train_folder) if f[-7:]=='.nii.gz']
 
 dataset = HCPDataset(train_files+test_files)

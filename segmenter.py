@@ -58,7 +58,7 @@ class CustomLoss:
         return -self.entr_reg*torch.mean(normZ*self.logsoftmax(Z))/self.entr_norm
 
 class AutoSegmenter:
-    def __init__(self,num_labels,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
+    def __init__(self,num_labels,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,unet_chan=32,unet_blocks=9,aenc_chan=16,aenc_depth=8,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
         self.lr = lr
         self.batch = batch
         self.device = device
@@ -67,11 +67,11 @@ class AutoSegmenter:
         self.devr_reg = devr_reg
         self.entr_reg = entr_reg
 
-        self.cnn = UNet3D(num_labels,kernel_size=3,filters=32,blocks=9,batch_norm=False,pad_type='SAME')
+        self.cnn = UNet3D(num_labels,kernel_size=3,filters=unet_chan,blocks=unet_blocks,batch_norm=False,pad_type='SAME')
    
         self.autoencs = torch.nn.ModuleList([])
         for _ in range(num_labels):
-            self.autoencs.append(AutoEnc(kernel_size=7,filters=16,depth=8,pool=2,batch_norm=False,pad_type='SAME')) 
+            self.autoencs.append(AutoEnc(kernel_size=7,filters=aenc_chan,depth=aenc_depth,pool=2,batch_norm=False,pad_type='SAME')) 
             #self.autoencs.append(AutoEnc(kernel_size=7,filters=8,depth=4,pool=4,batch_norm=False,pad_type='SAME')) 
         self.model = SegmRecon(self.cnn,self.autoencs)
         self.model = self.model.to(self.device)
@@ -242,9 +242,9 @@ class AutoSegmenter:
         return avg_tot_loss
 
     def segment(self,dataset,masked=False):
-        num_workers = min(self.batch,mp.cpu_count())
-        print("Using {} number of workers to load data for segmentation".format(num_workers))
-        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False,num_workers=num_workers)
+        #num_workers = min(self.batch,mp.cpu_count())
+        #print("Using {} number of workers to load data for segmentation".format(num_workers))
+        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
         self.model.eval()
         
         inp,segm,rec = [],[],[]
