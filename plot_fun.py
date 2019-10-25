@@ -11,6 +11,11 @@ def stack_plot(vols,filename,title='',sldim='z',nrows=2):
     ax = ax.ravel()
 
     for i in range(dims):
+        if len(vols[i].shape)==4:
+            cmap = 'rgb'
+        else:
+            cmap = 'gray'
+
         if sldim=='z':
             im = ax[i].imshow(vols[i][sh[0]//2],cmap='gray')
         elif sldim=='y':
@@ -29,3 +34,4 @@ def write_nifti(vol,filename):
     vol = np.swapaxes(vol,0,-1)
     img = nib.Nifti1Image(vol,np.eyes(4))
     img.to_filename(filename) 
+

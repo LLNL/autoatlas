@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from segmenter import AutoSegmenter
 from data import HCPDataset
-from plot_fun import stack_plot,write_nifti
+from plot_fun import stack_plot
 import os
 import numpy as np
 import argparse
@@ -90,6 +90,11 @@ plt.close()
 train_data = HCPDataset(train_files[:ARGS.num_test],dims,mean,stdev)
 test_data = HCPDataset(test_files[:ARGS.num_test],dims,mean,stdev)
 
+#rgb_base = np.array([np.random.rand()*255,np.random.rand()*255,np.random.rand()*255])
+#rgb_list = rgb_base[np.newaxis]+(np.arange(0,num_labels)*(256/num_labels))[:,np.newaxis]
+#rgb_list = np.mod(rgb_list,256).astype(np.uint8)
+rgb_list = np.array([[128,0,0],[170,110,40],[128,128,0],[0,128,128],[0,0,128],[255,255,255],[230,25,75],[245,130,48],[255,255,25],[210,245,60],[60,180,75],[70,240,240],[0,130,200],[145,30,180],[240,50,230],[128,128,128]]).astype(np.uint8)[:num_labels]
+
 test_seg,test_auto,test_vol = autoseg.segment(test_data)
 test_auto = test_auto*test_seg
 test_rec = np.sum(test_auto,axis=1,keepdims=True)
@@ -100,7 +105,10 @@ for i in range(ARGS.num_test):
     stack_plot(test_seg[i],ARGS.log_dir+'/seg_z_{}.png'.format(i),sldim='z',nrows=2)
     stack_plot(test_seg[i],ARGS.log_dir+'/seg_y_{}.png'.format(i),sldim='y',nrows=2)
     stack_plot(test_seg[i],ARGS.log_dir+'/seg_x_{}.png'.format(i),sldim='x',nrows=2)
-    #write_nifti(test_seg[i],ARGS.log_dir+'/seg_{}.nii.gz'.format(i))
+    rgb_seg = np.sum(test_seg[i][:,:,:,:,np.newaxis]*rgb_list[:,np.newaxis,np.newaxis,np.newaxis],axis=0).astype(np.uint8)
+    stack_plot([test_vol[i,0],rgb_seg],ARGS.log_dir+'/rgb_seg_z_{}.png'.format(i),sldim='z',nrows=1)
+    stack_plot([test_vol[i,0],rgb_seg],ARGS.log_dir+'/rgb_seg_y_{}.png'.format(i),sldim='y',nrows=1)
+    stack_plot([test_vol[i,0],rgb_seg],ARGS.log_dir+'/rgb_seg_x_{}.png'.format(i),sldim='x',nrows=1)
     stack_plot(test_auto[i],ARGS.log_dir+'/auto_z_{}.png'.format(i),sldim='z',nrows=2)
     stack_plot(test_auto[i],ARGS.log_dir+'/auto_y_{}.png'.format(i),sldim='y',nrows=2)
     stack_plot(test_auto[i],ARGS.log_dir+'/auto_x_{}.png'.format(i),sldim='x',nrows=2)
@@ -115,7 +123,10 @@ for i in range(ARGS.num_test):
     stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_z_{}.png'.format(i),sldim='z',nrows=2)
     stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_y_{}.png'.format(i),sldim='y',nrows=2)
     stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_x_{}.png'.format(i),sldim='x',nrows=2)
-    #write_nifti(test_seg[i],ARGS.log_dir+'/seg_{}.nii.gz'.format(i))
+    rgb_seg = np.sum(test_seg[i][:,:,:,:,np.newaxis]*rgb_list[:,np.newaxis,np.newaxis,np.newaxis],axis=0).astype(np.uint8)
+    stack_plot([test_vol[i,0],rgb_seg],ARGS.log_dir+'/mk_rgb_seg_z_{}.png'.format(i),sldim='z',nrows=1)
+    stack_plot([test_vol[i,0],rgb_seg],ARGS.log_dir+'/mk_rgb_seg_y_{}.png'.format(i),sldim='y',nrows=1)
+    stack_plot([test_vol[i,0],rgb_seg],ARGS.log_dir+'/mk_rgb_seg_x_{}.png'.format(i),sldim='x',nrows=1)
     stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_z_{}.png'.format(i),sldim='z',nrows=2)
     stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_y_{}.png'.format(i),sldim='y',nrows=2)
     stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_x_{}.png'.format(i),sldim='x',nrows=2)
