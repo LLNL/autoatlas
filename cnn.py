@@ -29,9 +29,9 @@ import torch
 #        else:
 #            raise ValueError('Only maxpool and cnn pooling are supported')
 
-class UNet3D(torch.nn.Module):
-    def __init__(self,num_labels,kernel_size=3,filters=32,blocks=7,batch_norm=False,pad_type='SAME'):
-        super(UNet3D,self).__init__()
+class UNet(torch.nn.Module):
+    def __init__(self,num_labels,dim=3,data_chan=1,kernel_size=3,filters=32,blocks=7,batch_norm=False,pad_type='SAME'):
+        super(UNet,self).__init__()
         self.kernel_size = kernel_size
         self.blocks = blocks
 
@@ -46,26 +46,33 @@ class UNet3D(torch.nn.Module):
         else:
             raise ValueError("ERROR: pad_type must be either VALID or SAME")
 
-        self.encoders = torch.nn.ModuleList([UNetEncoder3D(in_filters=1,out_filters=filters*2,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
+        if dim == 2:
+            self.conv = torch.nn.Conv2d
+        elif dim == 3:
+            self.conv = torch.nn.Conv3d
+        else:
+            raise ValueError("ERROR: dim for UNet must be either 2 or 3")
+        
+        self.encoders = torch.nn.ModuleList([UNetEncoder(dim=dim,in_filters=data_chan,out_filters=filters*2,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
         for _ in range(blocks//2-1):
             filters *= 2
-            enc = UNetEncoder3D(in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm) 
+            enc = UNetEncoder(dim=dim,in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm) 
             self.encoders.append(enc)
   
         filters *= 2
-        self.decoders = torch.nn.ModuleList([UNetDecoder3D(in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
+        self.decoders = torch.nn.ModuleList([UNetDecoder(dim=dim,in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
         for _ in range(blocks//2-1):
-            dec = UNetDecoder3D(in_filters=filters+filters*2,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)
+            dec = UNetDecoder(dim=dim,in_filters=filters+filters*2,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)
             self.decoders.append(dec)
             filters = filters//2
             #Division using // ensures return value is integer
 
         self.output = torch.nn.Sequential(
-                        torch.nn.Conv3d(in_channels=filters+2*filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
+                        self.conv(in_channels=filters+2*filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True),
-                        torch.nn.Conv3d(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
+                        self.conv(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True),
-                        torch.nn.Conv3d(in_channels=filters,out_channels=num_labels,kernel_size=1,padding=0))
+                        self.conv(in_channels=filters,out_channels=num_labels,kernel_size=1,padding=0))
                         #torch.nn.Softmax(dim=1))
 
     def forward(self,x):
@@ -80,48 +87,65 @@ class UNet3D(torch.nn.Module):
             if self.pad_type == 'VALID':
                 cr = [(sz-sx)//2 for sz,sx in zip(z.size(),x.size())]
                 #sz-sx is always even since up/down sample factor is 2
-                z = z[cr[0]:-cr[0],cr[1]:-cr[1],cr[2],-cr[2]]
+                z = z[:,:,cr[2]:-cr[2],cr[3]:-cr[3],cr[4]:-cr[4]] if self.dim==3 else z[:,:,cr[2]:-cr[2],cr[3]:-cr[3]]
             x = torch.cat((x,z),dim=1)
             x = dec(x)
 
         z = features.pop()
         if self.pad_type == 'VALID':
             cr = [(sz-sx)//2 for sz,sx in zip(z.size(),x.size())]
-            z = z[cr[0]:-cr[0],cr[1]:-cr[1],cr[2],-cr[2]]
+            z = z[:,:,cr[2]:-cr[2],cr[3]:-cr[3],cr[4]:-cr[4]] if self.dim==3 else z[:,:,cr[2]:-cr[2],cr[3]:-cr[3]]
         x = torch.cat((x,z),dim=1)
         return self.output(x)
 
-class UNetEncoder3D(torch.nn.Module):
-    def __init__(self,in_filters,out_filters,kernel_size,pad_width,batch_norm=False):
-        super(UNetEncoder3D,self).__init__()
+class UNetEncoder(torch.nn.Module):
+    def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,batch_norm=False):
+        super(UNetEncoder,self).__init__()
+        
+        if dim == 2:
+            self.conv = torch.nn.Conv2d
+            self.pool = torch.nn.MaxPool2d(2,padding=0)
+        elif dim == 3:
+            self.conv = torch.nn.Conv3d
+            self.pool = torch.nn.MaxPool3d(2,padding=0)
+        else:
+            raise ValueError("ERROR: dim for UNet must be either 2 or 3")
         
         self.model = torch.nn.Sequential(
-                        torch.nn.Conv3d(in_channels=in_filters,out_channels=out_filters//2,kernel_size=kernel_size,padding=pad_width),
+                        self.conv(in_channels=in_filters,out_channels=out_filters//2,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True),
-                        torch.nn.Conv3d(in_channels=out_filters//2,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
+                        self.conv(in_channels=out_filters//2,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
                         torch.nn.ReLU(inplace=True))
-        self.pool = torch.nn.MaxPool3d(2,padding=0)
 
     def forward(self,x):
         x = self.model(x)
         return self.pool(x),x
 
-class UNetDecoder3D(torch.nn.Module):
-    def __init__(self,in_filters,out_filters,kernel_size,pad_width,batch_norm=False):
-        super(UNetDecoder3D,self).__init__()
-
+class UNetDecoder(torch.nn.Module):
+    def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,batch_norm=False):
+        super(UNetDecoder,self).__init__()
+       
+        if dim == 2:
+            self.conv = torch.nn.Conv2d
+            self.conv_tran = torch.nn.ConvTranspose2d
+        elif dim == 3:
+            self.conv = torch.nn.Conv3d
+            self.conv_tran = torch.nn.ConvTranspose3d
+        else:
+            raise ValueError("ERROR: dim for Decoder must be either 2 or 3")
+ 
         self.model = torch.nn.Sequential(
-                            torch.nn.Conv3d(in_channels=in_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
+                            self.conv(in_channels=in_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
                             torch.nn.ReLU(inplace=True), 
-                            torch.nn.Conv3d(in_channels=out_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
+                            self.conv(in_channels=out_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
                             torch.nn.ReLU(inplace=True), 
-                            torch.nn.ConvTranspose3d(in_channels=out_filters,out_channels=out_filters,kernel_size=2,padding=0,stride=2))
+                            self.conv_tran(in_channels=out_filters,out_channels=out_filters,kernel_size=2,padding=0,stride=2))
 
     def forward(self,x):
         return self.model(x)
 
 class AutoEnc(torch.nn.Module):
-    def __init__(self,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pool_type='conv',pad_type='SAME'):
+    def __init__(self,dim=3,data_chan=1,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pool_type='conv',pad_type='SAME'):
         super(AutoEnc,self).__init__()
         if pad_type == 'VALID':
             pad_width = 0
@@ -136,21 +160,28 @@ class AutoEnc(torch.nn.Module):
         if depth%2!=0:
             raise ValueError("ERROR: Depth parameter must be even")
 
+        if dim == 2:
+            self.conv = torch.nn.Conv2d
+            self.conv_tran = torch.nn.ConvTranspose2d
+        elif dim == 3:
+            self.conv = torch.nn.Conv3d
+            self.conv_tran = torch.nn.ConvTranspose3d
+
         self.encoders = torch.nn.ModuleList([])
         for i in range(depth//2):
-            in_filters = 2 if i==0 else filters
+            in_filters = 2*data_chan if i==0 else filters
             enc = torch.nn.Sequential(
-                torch.nn.Conv3d(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool),
+                self.conv(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool),
                 torch.nn.ReLU(inplace=True))
             self.encoders.append(enc)
         
         self.decoders = torch.nn.ModuleList([])
         for i in range(depth//2):
             if i==depth//2-1:
-                dec = torch.nn.ConvTranspose3d(in_channels=filters,out_channels=1,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1) 
+                dec = self.conv_tran(in_channels=filters,out_channels=data_chan,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1) 
             else: 
                 dec = torch.nn.Sequential(
-                    torch.nn.ConvTranspose3d(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1),
+                    self.conv_tran(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1),
                     torch.nn.ReLU(inplace=True)) 
             self.decoders.append(dec)
         

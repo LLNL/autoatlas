@@ -24,8 +24,8 @@ class SegmRecon(torch.nn.Module):
             z = torch.cat(z,dim=1)
             recons.append(auto(z)) #i:i+1 ensures singleton dimensions are retained
         #return seg,y,torch.sum(torch.stack(recons,dim=-1),dim=-1)
-        recons = torch.cat(recons,dim=1)
-        assert recons.size(1)==y.size(1)
+        #recons = torch.cat(recons,dim=1)
+        #assert recons.size(1)==y.size(1)
         return seg,y,recons
 
         

@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from segmenter import AutoSegmenter
-from data import HCPDataset
+from data import HCPDataset,CelebDataset
 from plot_fun import stack_plot,write_nifti
 import os
 import numpy as np
@@ -17,41 +17,47 @@ config = cp.ConfigParser()
 config.read(ARGS.log_dir+'/args.cfg')
 
 #Parameters
-num_epochs = config.getint('command_line_arguments','epochs')
 num_labels = config.getint('command_line_arguments','num_labels')
-smooth_reg = config.getfloat('command_line_arguments','smooth_reg')
-devr_reg = config.getfloat('command_line_arguments','devr_reg')
-batch = config.getint('command_line_arguments','batch')
+data_chan = config.getint('command_line_arguments','data_chan')
+space_dim = config.getint('command_line_arguments','space_dim')
 unet_chan = config.getint('command_line_arguments','unet_chan')
 unet_blocks = config.getint('command_line_arguments','unet_blocks')
 aenc_chan = config.getint('command_line_arguments','aenc_chan')
 aenc_depth = config.getint('command_line_arguments','aenc_depth')
+num_epochs = config.getint('command_line_arguments','epochs')
+batch = config.getint('command_line_arguments','batch')
 lr = config.getfloat('command_line_arguments','lr')
-d = config.getint('command_line_arguments','dim')
-dims = [d,d,d]
-mean = None
-stdev = config.getfloat('command_line_arguments','stdev')
+smooth_reg = config.getfloat('command_line_arguments','smooth_reg')
+devr_reg = config.getfloat('command_line_arguments','devr_reg')
+min_freqs = config.getfloat('command_line_arguments','min_freqs')
 train_folder = config.get('command_line_arguments','train_folder')
 test_folder = config.get('command_line_arguments','test_folder')
+stdev = config.getfloat('command_line_arguments','stdev')
+size_dim = config.getint('command_line_arguments','size_dim')
 
 #Datasets
-train_files = [os.path.join(train_folder,f) for f in os.listdir(train_folder) if f[-7:]=='.nii.gz']
-test_files = [os.path.join(test_folder,f) for f in os.listdir(test_folder) if f[-7:]=='.nii.gz']
+if space_dim==3:
+    test_files = [os.path.join(test_folder,f) for f in os.listdir(test_folder) if f[-7:]=='.nii.gz'][:ARGS.num_test]
+    dims = [size_dim,size_dim,size_dim]
+    test_data = HCPDataset(test_files,dims,None,stdev)
+elif space_dim==2:
+    dims = [size_dim,size_dim]
+    test_data = CelebDataset(test_folder,num=ARGS.num_test,dims=dims,mean=None,stdev=stdev) 
+else:
+    raise ValueError('Argument space_dim must be either 2 or 3')
 
-train_tot,test_tot,train_mse,test_mse,train_smooth,test_smooth,train_entr,test_entr,train_devr,test_devr = [],[],[],[],[],[],[],[],[],[]
+train_tot,test_tot,train_mse,test_mse,train_smooth,test_smooth,train_devr,test_devr = [],[],[],[],[],[],[],[]
 for load_epoch in range(num_epochs):
     if not os.path.exists(ARGS.log_dir+'/model_epoch_{}.pth'.format(load_epoch)):
         print('Checkpoint at epoch {} is not found. Stopped logging'.format(load_epoch))
         break  
-    autoseg = AutoSegmenter(num_labels,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=0.0,batch=batch,lr=lr,unet_chan=unet_chan,unet_blocks=unet_blocks,aenc_chan=aenc_chan,aenc_depth=aenc_depth,device='cuda',load_checkpoint_epoch=load_epoch,checkpoint_dir=ARGS.log_dir)
+    autoseg = AutoSegmenter(num_labels,dim=space_dim,data_chan=data_chan,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=0.0,min_freqs=min_freqs,batch=batch,lr=lr,unet_chan=unet_chan,unet_blocks=unet_blocks,aenc_chan=aenc_chan,aenc_depth=aenc_depth,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=load_epoch)
     train_tot.append(autoseg.train_tot_loss)
     test_tot.append(autoseg.test_tot_loss)
     train_mse.append(autoseg.train_mse_loss)
     test_mse.append(autoseg.test_mse_loss)
     train_smooth.append(autoseg.train_smooth_loss)
     test_smooth.append(autoseg.test_smooth_loss)
-    train_entr.append(autoseg.train_entr_loss)
-    test_entr.append(autoseg.test_entr_loss)
     train_devr.append(autoseg.train_devr_loss)
     test_devr.append(autoseg.test_devr_loss)
 
@@ -87,36 +93,57 @@ plt.legend(['train','test'])
 plt.savefig(ARGS.log_dir+'/devr_loss.png')
 plt.close()
 
-train_data = HCPDataset(train_files[:ARGS.num_test],dims,mean,stdev)
-test_data = HCPDataset(test_files[:ARGS.num_test],dims,mean,stdev)
-
 test_seg,test_auto,test_vol = autoseg.segment(test_data)
 test_auto = test_auto*test_seg
-test_rec = np.sum(test_auto,axis=1,keepdims=True)
-for i in range(ARGS.num_test): 
-    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/gtvsrec_z_{}.png'.format(i),sldim='z',nrows=1)
-    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/gtvsrec_y_{}.png'.format(i),sldim='y',nrows=1)
-    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/gtvsrec_x_{}.png'.format(i),sldim='x',nrows=1)
-    stack_plot(test_seg[i],ARGS.log_dir+'/seg_z_{}.png'.format(i),sldim='z',nrows=2)
-    stack_plot(test_seg[i],ARGS.log_dir+'/seg_y_{}.png'.format(i),sldim='y',nrows=2)
-    stack_plot(test_seg[i],ARGS.log_dir+'/seg_x_{}.png'.format(i),sldim='x',nrows=2)
-    #write_nifti(test_seg[i],ARGS.log_dir+'/seg_{}.nii.gz'.format(i))
-    stack_plot(test_auto[i],ARGS.log_dir+'/auto_z_{}.png'.format(i),sldim='z',nrows=2)
-    stack_plot(test_auto[i],ARGS.log_dir+'/auto_y_{}.png'.format(i),sldim='y',nrows=2)
-    stack_plot(test_auto[i],ARGS.log_dir+'/auto_x_{}.png'.format(i),sldim='x',nrows=2)
+test_rec = np.sum(test_auto,axis=1)
+if space_dim==3:
+    test_seg = test_seg[:,:,0]
+    test_auto = test_auto[:,:,0] 
+    for i in range(ARGS.num_test): 
+        stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/gtvsrec_z_{}.png'.format(i),sldim='z',nrows=1)
+        stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/gtvsrec_y_{}.png'.format(i),sldim='y',nrows=1)
+        stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/gtvsrec_x_{}.png'.format(i),sldim='x',nrows=1)
+        stack_plot(test_seg[i],ARGS.log_dir+'/seg_z_{}.png'.format(i),sldim='z',nrows=2)
+        stack_plot(test_seg[i],ARGS.log_dir+'/seg_y_{}.png'.format(i),sldim='y',nrows=2)
+        stack_plot(test_seg[i],ARGS.log_dir+'/seg_x_{}.png'.format(i),sldim='x',nrows=2)
+        #write_nifti(test_seg[i],ARGS.log_dir+'/seg_{}.nii.gz'.format(i))
+        stack_plot(test_auto[i],ARGS.log_dir+'/auto_z_{}.png'.format(i),sldim='z',nrows=2)
+        stack_plot(test_auto[i],ARGS.log_dir+'/auto_y_{}.png'.format(i),sldim='y',nrows=2)
+        stack_plot(test_auto[i],ARGS.log_dir+'/auto_x_{}.png'.format(i),sldim='x',nrows=2)
+else:
+    test_vol = np.transpose(test_vol,(0,2,3,1))
+    test_rec = np.transpose(test_rec,(0,2,3,1))
+    test_seg = test_seg[:,:,0]
+    test_auto = np.transpose(test_auto,(0,1,3,4,2))
+    for i in range(ARGS.num_test): 
+        stack_plot(np.stack([test_vol[i],test_rec[i]],axis=0),ARGS.log_dir+'/gtvsrec_{}.png'.format(i),nrows=1)
+        stack_plot(test_seg[i],ARGS.log_dir+'/seg_{}.png'.format(i),nrows=2)
+        stack_plot(test_auto[i],ARGS.log_dir+'/auto_{}.png'.format(i),nrows=2)
 
 test_seg,test_auto,test_vol = autoseg.segment(test_data,masked=True)
 test_auto = test_auto*test_seg
-test_rec = np.sum(test_auto,axis=1,keepdims=True)
-for i in range(ARGS.num_test):
-    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/mk_gtvsrec_z_{}.png'.format(i),sldim='z',nrows=1)
-    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/mk_gtvsrec_y_{}.png'.format(i),sldim='y',nrows=1)
-    stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/mk_gtvsrec_x_{}.png'.format(i),sldim='x',nrows=1)
-    stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_z_{}.png'.format(i),sldim='z',nrows=2)
-    stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_y_{}.png'.format(i),sldim='y',nrows=2)
-    stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_x_{}.png'.format(i),sldim='x',nrows=2)
-    #write_nifti(test_seg[i],ARGS.log_dir+'/seg_{}.nii.gz'.format(i))
-    stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_z_{}.png'.format(i),sldim='z',nrows=2)
-    stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_y_{}.png'.format(i),sldim='y',nrows=2)
-    stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_x_{}.png'.format(i),sldim='x',nrows=2)
- 
+test_rec = np.sum(test_auto,axis=1)
+if space_dim==3:
+    test_seg = test_seg[:,:,0]
+    test_auto = test_auto[:,:,0] 
+    for i in range(ARGS.num_test):
+        stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/mk_gtvsrec_z_{}.png'.format(i),sldim='z',nrows=1)
+        stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/mk_gtvsrec_y_{}.png'.format(i),sldim='y',nrows=1)
+        stack_plot(np.stack([test_vol[i,0],test_rec[i,0]],axis=0),ARGS.log_dir+'/mk_gtvsrec_x_{}.png'.format(i),sldim='x',nrows=1)
+        stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_z_{}.png'.format(i),sldim='z',nrows=2)
+        stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_y_{}.png'.format(i),sldim='y',nrows=2)
+        stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_x_{}.png'.format(i),sldim='x',nrows=2)
+        #write_nifti(test_seg[i],ARGS.log_dir+'/seg_{}.nii.gz'.format(i))
+        stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_z_{}.png'.format(i),sldim='z',nrows=2)
+        stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_y_{}.png'.format(i),sldim='y',nrows=2)
+        stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_x_{}.png'.format(i),sldim='x',nrows=2)
+else:
+    test_vol = np.transpose(test_vol,(0,2,3,1))
+    test_rec = np.transpose(test_rec,(0,2,3,1))
+    test_seg = test_seg[:,:,0]
+    test_auto = np.transpose(test_auto,(0,1,3,4,2))
+    for i in range(ARGS.num_test): 
+        stack_plot(np.stack([test_vol[i],test_rec[i]],axis=0),ARGS.log_dir+'/mk_gtvsrec_{}.png'.format(i),nrows=1)
+        stack_plot(test_seg[i],ARGS.log_dir+'/mk_seg_{}.png'.format(i),nrows=2)
+        stack_plot(test_auto[i],ARGS.log_dir+'/mk_auto_{}.png'.format(i),nrows=2)
+     

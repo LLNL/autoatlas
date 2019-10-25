@@ -1,6 +1,6 @@
 import torch
 import os
-from cnn import UNet3D,AutoEnc
+from cnn import UNet,AutoEnc
 from models import SegmRecon
 from torch.utils.data import DataLoader
 import progressbar
@@ -8,70 +8,82 @@ import numpy as np
 import multiprocessing as mp
 
 class CustomLoss:
-    def __init__(self,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01):
+    def __init__(self,dim=3,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01):
         self.smooth_reg = smooth_reg
         self.devr_reg = devr_reg
         self.entr_reg = entr_reg
         self.entr_norm = entr_norm
         self.min_freqs = min_freqs
-        self.neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
+        self.dim = dim
+        self.dimlist = [2+i for i in range(self.dim)]
+        if dim==3:
+            self.neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
                        [1,-1,-1],[1,-1,0],[1,-1,1],
                        [1,0,-1], [1,0,0], [1,0,1],
                        [1,1,-1], [1,1,0], [1,1,1]]
+        elif dim==2:
+            self.neighs = [[0,1,np.nan],[1,-1,np.nan],[1,0,np.nan],[1,1,np.nan]]
+        else:
+            raise ValueError('dim must be either 2 or 3')
         self.softmax = torch.nn.Softmax(dim=1)
-        self.logsoftmax = torch.nn.LogSoftmax(dim=1)
+        #self.logsoftmax = torch.nn.LogSoftmax(dim=1)
         self.eps = 1e-10
         
     def mse_loss(self,gtruth,recs,seg,mask):
         mse_losses = []
-        den = torch.sum(mask,dim=(2,3,4))
-        num = torch.sum((gtruth-recs)*seg*mask*(gtruth-recs),dim=(2,3,4))
-        mse_losses = torch.sum(num/den,dim=1)
-        return torch.mean(mse_losses)
+        den = torch.sum(mask,dim=self.dimlist)
+        for i,r in enumerate(recs):
+            num = torch.mean((gtruth-r)*(gtruth-r),dim=1,keepdim=True)
+            num = torch.sum(num*seg[:,i:i+1]*mask,dim=self.dimlist)
+            mse_losses.append(num/den)
+        return torch.mean(torch.stack(mse_losses))
 
     def smooth_loss(self,seg,mask):
         nums,dens = [],[]
         for (Nz,Ny,Nx) in self.neighs:
             H = torch.cat((seg[:,:,-Nz:],  seg[:,:,:-Nz]),  dim=2)
             H = torch.cat((H[:,:,:,-Ny:],  H[:,:,:,:-Ny]),  dim=3)
-            H = torch.cat((H[:,:,:,:,-Nx:],H[:,:,:,:,:-Nx]),dim=4)
+            if self.dim==3:
+                H = torch.cat((H[:,:,:,:,-Nx:],H[:,:,:,:,:-Nx]),dim=4)
             H = seg*H
             W = torch.cat((mask[:,:,-Nz:],  mask[:,:,:-Nz]),  dim=2)
             W = torch.cat((W[:,:,:,-Ny:],  W[:,:,:,:-Ny]),  dim=3)
-            W = torch.cat((W[:,:,:,:,-Nx:],W[:,:,:,:,:-Nx]),dim=4)
+            if self.dim==3:
+                W = torch.cat((W[:,:,:,:,-Nx:],W[:,:,:,:,:-Nx]),dim=4)
             W = mask*W
             assert torch.max(W)==1.0
             assert torch.min(W)==0.0
-            nums.append(torch.sum(H*W,dim=(2,3,4)))
-            dens.append(torch.sum(W,dim=(2,3,4)))
+            nums.append(torch.sum(H*W,dim=self.dimlist))
+            dens.append(torch.sum(W,dim=self.dimlist))
         smooth_loss = torch.sum(torch.stack(nums,dim=-1),dim=-1)/torch.sum(torch.stack(dens,dim=-1),dim=-1)   
         smooth_loss = -torch.log(torch.sum(smooth_loss,dim=1))
         return self.smooth_reg*torch.mean(smooth_loss)
 
     def devr_loss(self,seg,mask):
-        clp = torch.sum(seg*mask,dim=(2,3,4))/torch.sum(mask,dim=(2,3,4))
+        clp = torch.sum(seg*mask,dim=self.dimlist)/torch.sum(mask,dim=self.dimlist)
         clp = -torch.log((clp+self.eps*self.min_freqs)/self.min_freqs)
         clp = torch.clamp(clp,min=0)
         return self.devr_reg*torch.mean(clp)
     
-    def entr_loss(self,Z,normZ): #Must reduce entropy at each voxel. Force each voxel to be a single class.
-        return -self.entr_reg*torch.mean(normZ*self.logsoftmax(Z))/self.entr_norm
+    #def entr_loss(self,Z,normZ): #Must reduce entropy at each voxel. Force each voxel to be a single class.
+    #    return -self.entr_reg*torch.mean(normZ*self.logsoftmax(Z))/self.entr_norm
 
 class AutoSegmenter:
-    def __init__(self,num_labels,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,unet_chan=32,unet_blocks=9,aenc_chan=16,aenc_depth=8,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
+    def __init__(self,num_labels,dim=3,data_chan=1,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,unet_chan=32,unet_blocks=9,aenc_chan=16,aenc_depth=8,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
         self.lr = lr
         self.batch = batch
         self.device = device
         self.checkpoint_dir = checkpoint_dir
+        self.data_chan = data_chan
         self.smooth_reg = smooth_reg
         self.devr_reg = devr_reg
         self.entr_reg = entr_reg
 
-        self.cnn = UNet3D(num_labels,kernel_size=3,filters=unet_chan,blocks=unet_blocks,batch_norm=False,pad_type='SAME')
+        self.cnn = UNet(num_labels,dim=dim,data_chan=data_chan,kernel_size=3,filters=unet_chan,blocks=unet_blocks,batch_norm=False,pad_type='SAME')
    
         self.autoencs = torch.nn.ModuleList([])
         for _ in range(num_labels):
-            self.autoencs.append(AutoEnc(kernel_size=7,filters=aenc_chan,depth=aenc_depth,pool=2,batch_norm=False,pad_type='SAME')) 
+            self.autoencs.append(AutoEnc(dim=dim,data_chan=data_chan,kernel_size=7,filters=aenc_chan,depth=aenc_depth,pool=2,batch_norm=False,pad_type='SAME')) 
             #self.autoencs.append(AutoEnc(kernel_size=7,filters=8,depth=4,pool=4,batch_norm=False,pad_type='SAME')) 
         self.model = SegmRecon(self.cnn,self.autoencs)
         self.model = self.model.to(self.device)
@@ -81,7 +93,7 @@ class AutoSegmenter:
             torch.backends.cudnn.benchmark = True
             #torch.backends.cudnn.benchmark = False #True results in cuDNN error: CUDNN_STATUS_INTERNAL_ERROR on pascal
        
-        self.criterion = CustomLoss(smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=entr_reg,entr_norm=np.log(num_labels),min_freqs=min_freqs)
+        self.criterion = CustomLoss(dim=dim,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=entr_reg,entr_norm=np.log(num_labels),min_freqs=min_freqs)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=lr) 
 
         if load_checkpoint_epoch is not None:
@@ -252,11 +264,11 @@ class AutoSegmenter:
             for idx,(data_in,mask_in) in enumerate(loader):
                 inp.append(data_in.numpy())
                 data_in = data_in.to(self.device)
-                _,s,r = self.model(data_in)
-                s = s.cpu().numpy()
-                r = r.cpu().numpy()
+                _,segtemp,rectemp = self.model(data_in)
+                s = segtemp.cpu().numpy()[:,:,np.newaxis] #3rd axis is channels (like RGB)
+                r = np.stack([r.cpu().numpy() for r in rectemp],axis=1) #2nd axis is seg label 
                 if masked:
-                    mk = mask_in.cpu().numpy()
+                    mk = mask_in.cpu().numpy()[:,np.newaxis] #insert an axis at 2nd or 3rd positions
                     segm.append(s*mk)
                     rec.append(r*mk)
                 else:

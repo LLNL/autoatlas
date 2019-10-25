@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 
-def stack_plot(vols,filename,title='',sldim='z',nrows=2):
+def stack_plot(vols,filename,title='',sldim=None,nrows=2):
     dims = len(vols)
     sh = vols[0].shape
 
@@ -15,9 +15,12 @@ def stack_plot(vols,filename,title='',sldim='z',nrows=2):
             im = ax[i].imshow(vols[i][sh[0]//2],cmap='gray')
         elif sldim=='y':
             im = ax[i].imshow(vols[i][:,sh[1]//2],cmap='gray')
-        else:
+        elif sldim=='x':
             im = ax[i].imshow(vols[i][:,:,sh[2]//2],cmap='gray')
-            
+        else:
+            im = ax[i].imshow(vols[i],cmap='gray')
+            #assumes 2d with or without color
+ 
         fig.colorbar(im,ax=ax[i])
 
     fig.suptitle(title)

@@ -1,11 +1,13 @@
 from segmenter import AutoSegmenter
-from data import HCPDataset
+from data import HCPDataset,CelebDataset
 import os
 import argparse
 import configparser as cp
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--num_labels',type=int,default=4,help='Number of class labels')
+parser.add_argument('--data_chan',type=int,default=1,help='Number of channels in input image or volume.')
+parser.add_argument('--space_dim',type=int,default=3,help='Number of spatial dimensions. Must be either 2 or 3')
 parser.add_argument('--unet_chan',type=int,default=32,help='Number of U-net input channels')
 parser.add_argument('--unet_blocks',type=int,default=9,help='Number of U-net blocks each with two conv layers')
 parser.add_argument('--aenc_chan',type=int,default=16,help='Number of autoencoder channels')
@@ -23,7 +25,7 @@ parser.add_argument('--train_folder',type=str,default='/p/gscratchr/mohan3/Data/
 parser.add_argument('--test_folder',type=str,default='/p/gscratchr/mohan3/Data/T1_decimate/3mm/test',help='Directory containing testing/validation data')
 #parser.add_argument('--mean',type=float,default=None,help='Mean of data for mean subtraction')
 parser.add_argument('--stdev',type=float,default=286.3180,help='Standard deviation of data for normalization')
-parser.add_argument('--dim',type=int,default=64,help='Dimension along each of three dimensions for input volumes')
+parser.add_argument('--size_dim',type=int,default=64,help='Size of each dimension of input volume or image')
 ARGS = parser.parse_args()
     
 if not os.path.exists(ARGS.log_dir):
@@ -37,20 +39,26 @@ with open(os.path.join(ARGS.log_dir,'args.cfg'),'w') as cfg:
 
 #Parameters
 entr_reg = 0.0
-dims = [ARGS.dim,ARGS.dim,ARGS.dim]
 
 #Datasets
-train_files = [os.path.join(ARGS.train_folder,f) for f in os.listdir(ARGS.train_folder) if f[-7:]=='.nii.gz']
-test_files = [os.path.join(ARGS.test_folder,f) for f in os.listdir(ARGS.test_folder) if f[-7:]=='.nii.gz'][:ARGS.num_test]
-
-train_data = HCPDataset(train_files,dims,None,ARGS.stdev)
-valid_data = HCPDataset(test_files,dims,None,ARGS.stdev)
+if ARGS.space_dim==3:
+    train_files = [os.path.join(ARGS.train_folder,f) for f in os.listdir(ARGS.train_folder) if f[-7:]=='.nii.gz']
+    test_files = [os.path.join(ARGS.test_folder,f) for f in os.listdir(ARGS.test_folder) if f[-7:]=='.nii.gz'][:ARGS.num_test]
+    dims = [ARGS.size_dim,ARGS.size_dim,ARGS.size_dim]
+    train_data = HCPDataset(train_files,dims,None,ARGS.stdev)
+    valid_data = HCPDataset(test_files,dims,None,ARGS.stdev)
+elif ARGS.space_dim==2:
+    dims = [ARGS.size_dim,ARGS.size_dim]
+    train_data = CelebDataset(ARGS.train_folder,dims=dims,mean=None,stdev=ARGS.stdev) 
+    valid_data = CelebDataset(ARGS.test_folder,num=ARGS.num_test,dims=dims,mean=None,stdev=ARGS.stdev) 
+else:
+    raise ValueError('Argument space_dim must be either 2 or 3')
 
 #NN Model
 if ARGS.load_epoch >= 0:
-    autoseg = AutoSegmenter(ARGS.num_labels,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=ARGS.load_epoch)
+    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=ARGS.load_epoch)
 elif ARGS.load_epoch == -1:
-    autoseg = AutoSegmenter(ARGS.num_labels,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,device='cuda',checkpoint_dir=ARGS.log_dir)
+    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,device='cuda',checkpoint_dir=ARGS.log_dir)
 else:
     raise ValueError('load_epoch must be greater than or equal to -1')
 
