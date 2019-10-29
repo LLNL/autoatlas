@@ -14,6 +14,7 @@ parser.add_argument('--aenc_chan',type=int,default=16,help='Number of autoencode
 parser.add_argument('--aenc_depth',type=int,default=8,help='Depth of autoencoder')
 parser.add_argument('--epochs',type=int,default=1,help='Number of epochs')
 parser.add_argument('--batch',type=int,default=1,help='Batch size')
+parser.add_argument('--re_pow',type=int,default=1,help='Power (of norm) for absolute reconstruction error')
 parser.add_argument('--num_test',type=int,default=1,help='Number of samples for testing/validation')
 parser.add_argument('--lr',type=float,default=1e-4,help='Learning rate')
 parser.add_argument('--smooth_reg',type=float,default=1.0,help='Regularization enforcing smoothness')
@@ -56,9 +57,9 @@ else:
 
 #NN Model
 if ARGS.load_epoch >= 0:
-    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=ARGS.load_epoch)
+    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,re_pow=ARGS.re_pow,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=ARGS.load_epoch)
 elif ARGS.load_epoch == -1:
-    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,device='cuda',checkpoint_dir=ARGS.log_dir)
+    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,re_pow=ARGS.re_pow,device='cuda',checkpoint_dir=ARGS.log_dir)
 else:
     raise ValueError('load_epoch must be greater than or equal to -1')
 

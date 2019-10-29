@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 
-def stack_plot(vols,filename,title='',sldim=None,nrows=2):
+def stack_plot(vols,filename,title='',sldim=None,nrows=2,cmap=None):
     dims = len(vols)
     sh = vols[0].shape
 
@@ -12,13 +12,13 @@ def stack_plot(vols,filename,title='',sldim=None,nrows=2):
 
     for i in range(dims):
         if sldim=='z':
-            im = ax[i].imshow(vols[i][sh[0]//2],cmap='gray')
+            im = ax[i].imshow(vols[i][sh[0]//2],cmap=cmap)
         elif sldim=='y':
-            im = ax[i].imshow(vols[i][:,sh[1]//2],cmap='gray')
+            im = ax[i].imshow(vols[i][:,sh[1]//2],cmap=cmap)
         elif sldim=='x':
-            im = ax[i].imshow(vols[i][:,:,sh[2]//2],cmap='gray')
+            im = ax[i].imshow(vols[i][:,:,sh[2]//2],cmap=cmap)
         else:
-            im = ax[i].imshow(vols[i],cmap='gray')
+            im = ax[i].imshow(vols[i],cmap=cmap)
             #assumes 2d with or without color
  
         fig.colorbar(im,ax=ax[i])
@@ -32,3 +32,4 @@ def write_nifti(vol,filename):
     vol = np.swapaxes(vol,0,-1)
     img = nib.Nifti1Image(vol,np.eyes(4))
     img.to_filename(filename) 
+

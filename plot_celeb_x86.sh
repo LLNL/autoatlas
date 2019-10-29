@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -t 06:00:00
+#SBATCH -t 24:00:00
 #SBATCH -p pbatch
 #SBATCH -A ccp
 #SBATCH -D /g/g90/mohan3/Devs/TBI/atlas2d

@@ -8,12 +8,13 @@ import numpy as np
 import multiprocessing as mp
 
 class CustomLoss:
-    def __init__(self,dim=3,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01):
+    def __init__(self,dim=3,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01,npow=1):
         self.smooth_reg = smooth_reg
         self.devr_reg = devr_reg
         self.entr_reg = entr_reg
         self.entr_norm = entr_norm
         self.min_freqs = min_freqs
+        self.npow = npow
         self.dim = dim
         self.dimlist = [2+i for i in range(self.dim)]
         if dim==3:
@@ -33,7 +34,7 @@ class CustomLoss:
         mse_losses = []
         den = torch.sum(mask,dim=self.dimlist)
         for i,r in enumerate(recs):
-            num = torch.mean((gtruth-r)*(gtruth-r),dim=1,keepdim=True)
+            num = torch.mean(torch.abs(gtruth-r)**self.npow,dim=1,keepdim=True)
             num = torch.sum(num*seg[:,i:i+1]*mask,dim=self.dimlist)
             mse_losses.append(num/den)
         return torch.mean(torch.stack(mse_losses))
@@ -69,7 +70,7 @@ class CustomLoss:
     #    return -self.entr_reg*torch.mean(normZ*self.logsoftmax(Z))/self.entr_norm
 
 class AutoSegmenter:
-    def __init__(self,num_labels,dim=3,data_chan=1,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,unet_chan=32,unet_blocks=9,aenc_chan=16,aenc_depth=8,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
+    def __init__(self,num_labels,dim=3,data_chan=1,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,unet_chan=32,unet_blocks=9,aenc_chan=16,aenc_depth=8,re_pow=1,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
         self.lr = lr
         self.batch = batch
         self.device = device
@@ -93,7 +94,7 @@ class AutoSegmenter:
             torch.backends.cudnn.benchmark = True
             #torch.backends.cudnn.benchmark = False #True results in cuDNN error: CUDNN_STATUS_INTERNAL_ERROR on pascal
        
-        self.criterion = CustomLoss(dim=dim,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=entr_reg,entr_norm=np.log(num_labels),min_freqs=min_freqs)
+        self.criterion = CustomLoss(dim=dim,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=entr_reg,entr_norm=np.log(num_labels),min_freqs=min_freqs,npow=re_pow)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=lr) 
 
         if load_checkpoint_epoch is not None:
