@@ -145,8 +145,11 @@ class UNetDecoder(torch.nn.Module):
         return self.model(x)
 
 class AutoEnc(torch.nn.Module):
-    def __init__(self,dim=3,data_chan=1,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pool_type='conv',pad_type='SAME'):
+    def __init__(self,sizes,data_chan=1,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pool_type='conv',pad_type='SAME'):
         super(AutoEnc,self).__init__()
+        self.sizes = sizes
+        dim = len(self.sizes)
+
         if pad_type == 'VALID':
             pad_width = 0
         elif pad_type == 'SAME':
@@ -157,8 +160,8 @@ class AutoEnc(torch.nn.Module):
         if kernel_size%2==0:
             raise ValueError("ERROR: Kernel size must be odd")
 
-        if depth%2!=0:
-            raise ValueError("ERROR: Depth parameter must be even")
+        if depth%2==0:
+            raise ValueError("ERROR: Depth parameter must be odd")
 
         if dim == 2:
             self.conv = torch.nn.Conv2d
@@ -168,16 +171,27 @@ class AutoEnc(torch.nn.Module):
             self.conv_tran = torch.nn.ConvTranspose3d
 
         self.encoders = torch.nn.ModuleList([])
-        for i in range(depth//2):
+        stages = depth//2
+        for i in range(stages):
             in_filters = 2*data_chan if i==0 else filters
             enc = torch.nn.Sequential(
                 self.conv(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool),
                 torch.nn.ReLU(inplace=True))
             self.encoders.append(enc)
+
+        if dim == 2:
+            self.lin_features = int(filters*sizes[0]*sizes[1]/(pool**(2*stages)))
+        elif dim == 3:
+            self.lin_features = int(filters*sizes[0]*sizes[1]*sizes[2]/(pool**(3*stages)))
+ 
+        self.linear_enc = torch.nn.Sequential(torch.nn.Linear(in_features=self.lin_features,out_features=filters),
+                                     torch.nn.ReLU(inplace=True))   
+        self.linear_dec = torch.nn.Sequential(torch.nn.Linear(in_features=filters,out_features=self.lin_features),
+                                     torch.nn.ReLU(inplace=True))   
         
         self.decoders = torch.nn.ModuleList([])
-        for i in range(depth//2):
-            if i==depth//2-1:
+        for i in range(stages):
+            if i==stages-1:
                 dec = self.conv_tran(in_channels=filters,out_channels=data_chan,kernel_size=kernel_size,padding=pad_width,stride=pool,output_padding=1) 
             else: 
                 dec = torch.nn.Sequential(
@@ -188,6 +202,11 @@ class AutoEnc(torch.nn.Module):
     def forward(self,x):
         for enc in self.encoders:
             x = enc(x)
+        sz = x.size()
+        x = x.view(-1,self.lin_features)
+        x = self.linear_enc(x)
+        x = self.linear_dec(x)
+        x = x.view(sz)
         for dec in self.decoders:
             x = dec(x)
         return x

@@ -53,7 +53,7 @@ for load_epoch in range(num_epochs):
     if not os.path.exists(ARGS.log_dir+'/model_epoch_{}.pth'.format(load_epoch)):
         print('Checkpoint at epoch {} is not found. Stopped logging'.format(load_epoch))
         break  
-    autoseg = AutoSegmenter(num_labels,dim=space_dim,data_chan=data_chan,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=0.0,min_freqs=min_freqs,batch=batch,lr=lr,unet_chan=unet_chan,unet_blocks=unet_blocks,aenc_chan=aenc_chan,aenc_depth=aenc_depth,re_pow=re_pow,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=load_epoch)
+    autoseg = AutoSegmenter(num_labels,sizes=dims,data_chan=data_chan,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=0.0,min_freqs=min_freqs,batch=batch,lr=lr,unet_chan=unet_chan,unet_blocks=unet_blocks,aenc_chan=aenc_chan,aenc_depth=aenc_depth,re_pow=re_pow,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=load_epoch)
     train_tot.append(autoseg.train_tot_loss)
     test_tot.append(autoseg.test_tot_loss)
     train_mse.append(autoseg.train_mse_loss)

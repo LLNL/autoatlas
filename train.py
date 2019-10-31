@@ -57,9 +57,9 @@ else:
 
 #NN Model
 if ARGS.load_epoch >= 0:
-    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,re_pow=ARGS.re_pow,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=ARGS.load_epoch)
+    autoseg = AutoSegmenter(ARGS.num_labels,sizes=dims,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,re_pow=ARGS.re_pow,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=ARGS.load_epoch)
 elif ARGS.load_epoch == -1:
-    autoseg = AutoSegmenter(ARGS.num_labels,dim=ARGS.space_dim,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,re_pow=ARGS.re_pow,device='cuda',checkpoint_dir=ARGS.log_dir)
+    autoseg = AutoSegmenter(ARGS.num_labels,sizes=dims,data_chan=ARGS.data_chan,smooth_reg=ARGS.smooth_reg,devr_reg=ARGS.devr_reg,entr_reg=entr_reg,min_freqs=ARGS.min_freqs,batch=ARGS.batch,lr=ARGS.lr,unet_chan=ARGS.unet_chan,unet_blocks=ARGS.unet_blocks,aenc_chan=ARGS.aenc_chan,aenc_depth=ARGS.aenc_depth,re_pow=ARGS.re_pow,device='cuda',checkpoint_dir=ARGS.log_dir)
 else:
     raise ValueError('load_epoch must be greater than or equal to -1')
 
