@@ -211,3 +211,9 @@ class AutoEnc(torch.nn.Module):
             x = dec(x)
         return x
 
+    def encode(self,x):
+        for enc in self.encoders:
+            x = enc(x)
+        sz = x.size()
+        x = x.view(-1,self.lin_features)
+        return self.linear_enc(x)

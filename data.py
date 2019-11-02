@@ -25,19 +25,21 @@ class SimDataset(Dataset):
         return torch.unsqueeze(data,dim=0)
 
 class HCPDataset(Dataset):
-    def __init__(self,files,dims=None,mean=None,stdev=None):
+    def __init__(self,files,dims=None,mean=None,stdev=None,ret_filen=False):
         if not isinstance(files,list):
             files = [files]
         self.files = files
         self.dims = dims
         self.mean = mean
         self.stdev = stdev
+        self.ret_filen = ret_filen
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self,idx):
-        vol = nib.load(self.files[idx]).get_fdata()
+        filename = self.files[idx]
+        vol = nib.load(filename).get_fdata()
         if self.dims is not None:
             self.dims = np.array(self.dims,dtype=int)
             iB = (np.array(vol.shape,dtype=int)-self.dims)//2
@@ -62,7 +64,10 @@ class HCPDataset(Dataset):
 
         vol = torch.unsqueeze(torch.from_numpy(vol),dim=0)
         mask = torch.unsqueeze(torch.from_numpy(mask),dim=0)
-        return vol.float(),mask.float()
+        if self.ret_filen:
+            return vol.float(),mask.float(),filename
+        else:
+            return vol.float(),mask.float()
 
 class CelebDataset(Dataset):
     def __init__(self,folder,num=None,dims=None,mean=None,stdev=None,cmap='gray'):

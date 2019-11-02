@@ -28,5 +28,14 @@ class SegmRecon(torch.nn.Module):
         #assert recons.size(1)==y.size(1)
         return seg,y,recons
 
-        
+    def segcode(self,x):
+        seg = self.segm(x)
+        y = self.softmax(seg)
+        rec_encs = []
+        for i,auto in enumerate(self.autoencs):
+            z = [x*y[:,i:i+1],x*(1-y[:,i:i+1])]
+            z = torch.cat(z,dim=1)
+            rec_encs.append(auto.encode(z))
+        return y,torch.stack(rec_encs,dim=1)
+         
           

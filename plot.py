@@ -5,36 +5,15 @@ from plot_fun import stack_plot
 import os
 import numpy as np
 import argparse
-import configparser as cp
 import os
+from utils import get_config
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--log_dir',type=str,default='./checkpoints/',help='Directory for storing run time data')
 parser.add_argument('--num_test',type=int,default=1,help='Number of samples to record')
 ARGS = parser.parse_args()
     
-config = cp.ConfigParser()
-config.read(ARGS.log_dir+'/args.cfg')
-
-#Parameters
-num_labels = config.getint('command_line_arguments','num_labels')
-data_chan = config.getint('command_line_arguments','data_chan')
-space_dim = config.getint('command_line_arguments','space_dim')
-unet_chan = config.getint('command_line_arguments','unet_chan')
-unet_blocks = config.getint('command_line_arguments','unet_blocks')
-aenc_chan = config.getint('command_line_arguments','aenc_chan')
-aenc_depth = config.getint('command_line_arguments','aenc_depth')
-num_epochs = config.getint('command_line_arguments','epochs')
-batch = config.getint('command_line_arguments','batch')
-re_pow = config.getint('command_line_arguments','re_pow')
-lr = config.getfloat('command_line_arguments','lr')
-smooth_reg = config.getfloat('command_line_arguments','smooth_reg')
-devr_reg = config.getfloat('command_line_arguments','devr_reg')
-min_freqs = config.getfloat('command_line_arguments','min_freqs')
-train_folder = config.get('command_line_arguments','train_folder')
-test_folder = config.get('command_line_arguments','test_folder')
-stdev = config.getfloat('command_line_arguments','stdev')
-size_dim = config.getint('command_line_arguments','size_dim')
+num_labels,data_chan,space_dim,unet_chan,unet_blocks,aenc_chan,aenc_depth,num_epochs,batch,re_pow,lr,smooth_reg,devr_reg,min_freqs,train_folder,test_folder,stdev,size_dim = get_config(ARGS.log_dir+'/args.cfg')
 
 #Datasets
 if space_dim==3:

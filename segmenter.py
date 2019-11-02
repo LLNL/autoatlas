@@ -6,9 +6,12 @@ from torch.utils.data import DataLoader
 import progressbar
 import numpy as np
 import multiprocessing as mp
+import h5py
 
 class CustomLoss:
     def __init__(self,dim=3,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01,npow=1):
+        print('CustomLoss: dim={},smooth_reg={},devr_reg={},entr_reg={},entr_norm={},min_freqs={},npow={}'.format(dim,smooth_reg,devr_reg,entr_reg,entr_norm,min_freqs,npow))
+
         self.smooth_reg = smooth_reg
         self.devr_reg = devr_reg
         self.entr_reg = entr_reg
@@ -37,7 +40,8 @@ class CustomLoss:
             num = torch.mean(torch.abs(gtruth-r)**self.npow,dim=1,keepdim=True)
             num = torch.sum(num*seg[:,i:i+1]*mask,dim=self.dimlist)
             mse_losses.append(num/den)
-        return torch.mean(torch.stack(mse_losses))
+        #return torch.mean(torch.stack(mse_losses))
+        return torch.mean(torch.sum(torch.stack(mse_losses,dim=-1),dim=-1))
 
     def smooth_loss(self,seg,mask):
         nums,dens = [],[]
@@ -106,6 +110,7 @@ class AutoSegmenter:
                 raise ValueError('Checkpoint path does not exist: {}'.format(checkpoint_path),flush=True)
             else:
                 self.model.load_state_dict(checkpoint['model'])
+                #self.optimizer.load_state_dict(checkpoint['optimizer'])
                 self.start_epoch = checkpoint['epoch']
                 self.train_tot_loss = checkpoint['train_tot_loss']
                 self.train_mse_loss = checkpoint['train_mse_loss']
@@ -278,6 +283,57 @@ class AutoSegmenter:
                     rec.append(r)
         return np.concatenate(segm,axis=0),np.concatenate(rec,axis=0),np.concatenate(inp,axis=0)
 
+    def eval(self,dataset,log_dir=None,ret_data=False):
+        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False)
+        self.model.eval()
+        with torch.no_grad():
+            all_segs,all_recs,all_inp,all_mask,all_code,all_files = [],[],[],[],[],[]
+            for idx,(data_in,mask,files) in enumerate(loader):
+                data_in = data_in.to(self.device)
+                segs,code = self.model.module.segcode(data_in)      
+                _,segs,recs = self.model(data_in)
+                inp = np.squeeze(data_in.cpu().numpy(),axis=1)
+                segs = segs.cpu().numpy()
+                recs = np.stack([r.cpu().numpy() for r in recs],axis=1) 
+                recs = np.squeeze(recs,axis=2)
+                mask = np.squeeze(mask.cpu().numpy(),axis=1) 
+                code = code.cpu().numpy()
+              
+                if log_dir is not None:
+                    write_dir = os.path.join(log_dir,'aa_eval')
+                    if not os.path.exists(write_dir):
+                        os.makedirs(write_dir) 
+                    for i in range(len(files)):
+                        f = files[i].split('/')[-1].split('.')[0]
+                        g,s,r,c,m = inp[i],segs[i],recs[i],code[i],mask[i]
+                        #print(g.shape,s.shape,r.shape,c.shape,m.shape)
+                        write_file = os.path.join(write_dir,f+'_aa.h5')
+                        with h5py.File(write_file,'w') as f:
+                            print('Saving {}'.format(write_file))
+                            f.create_dataset('ground_truth',shape=g.shape,dtype=g.dtype,data=g)
+                            f.create_dataset('segmentation',shape=s.shape,dtype=s.dtype,data=s)
+                            f.create_dataset('reconstruction',shape=r.shape,dtype=r.dtype,data=r)
+                            f.create_dataset('embedding',shape=c.shape,dtype=c.dtype,data=c)
+                            f.create_dataset('mask',shape=m.shape,dtype=m.dtype,data=m)
+
+                if ret_data == True:
+                    all_inp.append(inp)
+                    all_segs.append(segs)
+                    all_recs.append(recs)
+                    all_mask.append(mask)
+                    all_code.append(code)
+                    all_files.append(files)
+        
+        if ret_data == True:
+            all_inp = np.concatenate(all_inp,axis=0)
+            all_segs = np.concatenate(all_segs,axis=0)
+            all_recs = np.concatenate(all_recs,axis=0)       
+            all_mask = np.concatenate(all_mask,axis=0)
+            all_code = np.concatenate(all_code,axis=0)
+            return all_inp,all_segs,all_recs,all_mask,all_code,all_files
+        else:
+            return None
+
 #    def classrec(self,dataset,masked=False):
 #        num_workers = min(self.batch,mp.cpu_count())
 #        print("Using {} number of workers to load data for class reconstruction".format(num_workers))
@@ -309,6 +365,7 @@ class AutoSegmenter:
     def checkpoint(self, epoch):
         state_dict = {
             'model': self.model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
             'epoch': epoch,
             'train_tot_loss': self.train_tot_loss,
             'train_mse_loss': self.train_mse_loss,
