@@ -24,6 +24,6 @@ test_data = HCPDataset(test_files,dims,None,stdev,ret_filen=True)
 
 autoseg = AutoSegmenter(num_labels,sizes=dims,data_chan=data_chan,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=0.0,min_freqs=min_freqs,batch=batch,lr=lr,unet_chan=unet_chan,unet_blocks=unet_blocks,aenc_chan=aenc_chan,aenc_depth=aenc_depth,re_pow=re_pow,device='cuda',checkpoint_dir=ARGS.log_dir,load_checkpoint_epoch=ARGS.load_epoch)
 
-autoseg.eval(train_data,ARGS.log_dir,ret_data=False)
-autoseg.eval(test_data,ARGS.log_dir,ret_data=False)
+autoseg.eval(train_data,os.path.join(ARGS.log_dir,'train_aa'),ret_data=False)
+autoseg.eval(test_data,os.path.join(ARGS.log_dir,'test_aa'),ret_data=False)
 

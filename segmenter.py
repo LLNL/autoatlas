@@ -300,14 +300,13 @@ class AutoSegmenter:
                 code = code.cpu().numpy()
               
                 if log_dir is not None:
-                    write_dir = os.path.join(log_dir,'aa_eval')
-                    if not os.path.exists(write_dir):
-                        os.makedirs(write_dir) 
+                    if not os.path.exists(log_dir):
+                        os.makedirs(log_dir) 
                     for i in range(len(files)):
                         f = files[i].split('/')[-1].split('.')[0]
                         g,s,r,c,m = inp[i],segs[i],recs[i],code[i],mask[i]
                         #print(g.shape,s.shape,r.shape,c.shape,m.shape)
-                        write_file = os.path.join(write_dir,f+'_aa.h5')
+                        write_file = os.path.join(log_dir,f+'_aa.h5')
                         with h5py.File(write_file,'w') as f:
                             print('Saving {}'.format(write_file))
                             f.create_dataset('ground_truth',shape=g.shape,dtype=g.dtype,data=g)
