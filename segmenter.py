@@ -110,7 +110,7 @@ class AutoSegmenter:
                 raise ValueError('Checkpoint path does not exist: {}'.format(checkpoint_path),flush=True)
             else:
                 self.model.load_state_dict(checkpoint['model'])
-                #self.optimizer.load_state_dict(checkpoint['optimizer'])
+                self.optimizer.load_state_dict(checkpoint['optimizer'])
                 self.start_epoch = checkpoint['epoch']
                 self.train_tot_loss = checkpoint['train_tot_loss']
                 self.train_mse_loss = checkpoint['train_mse_loss']
