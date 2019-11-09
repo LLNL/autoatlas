@@ -20,8 +20,9 @@ class SegmRecon(torch.nn.Module):
 
         recons = []
         for i,auto in enumerate(self.autoencs):
-            z = [x*y[:,i:i+1],x*(1-y[:,i:i+1])]
-            z = torch.cat(z,dim=1)
+            z = x*y[:,i:i+1]
+            #z = [x*y[:,i:i+1],x*(1-y[:,i:i+1])]
+            #z = torch.cat(z,dim=1)
             recons.append(auto(z)) #i:i+1 ensures singleton dimensions are retained
         #return seg,y,torch.sum(torch.stack(recons,dim=-1),dim=-1)
         #recons = torch.cat(recons,dim=1)
@@ -33,8 +34,9 @@ class SegmRecon(torch.nn.Module):
         y = self.softmax(seg)
         rec_encs = []
         for i,auto in enumerate(self.autoencs):
-            z = [x*y[:,i:i+1],x*(1-y[:,i:i+1])]
-            z = torch.cat(z,dim=1)
+            #z = [x*y[:,i:i+1],x*(1-y[:,i:i+1])]
+            z = x*y[:,i:i+1]
+            #z = torch.cat(z,dim=1)
             rec_encs.append(auto.encode(z))
         return y,torch.stack(rec_encs,dim=1)
          

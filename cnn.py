@@ -173,7 +173,8 @@ class AutoEnc(torch.nn.Module):
         self.encoders = torch.nn.ModuleList([])
         stages = depth//2
         for i in range(stages):
-            in_filters = 2*data_chan if i==0 else filters
+            #in_filters = 2*data_chan if i==0 else filters
+            in_filters = data_chan if i==0 else filters
             enc = torch.nn.Sequential(
                 self.conv(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool),
                 torch.nn.ReLU(inplace=True))

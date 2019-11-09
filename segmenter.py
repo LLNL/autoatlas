@@ -258,7 +258,7 @@ class AutoSegmenter:
         self.test_smooth_loss = avg_smooth_loss
         self.test_entr_loss = avg_entr_loss
         self.test_devr_loss = avg_devr_loss
-        return avg_tot_loss
+        return avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss
 
     def segment(self,dataset,masked=False):
         #num_workers = min(self.batch,mp.cpu_count())
