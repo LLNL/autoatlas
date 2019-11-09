@@ -8,6 +8,8 @@ from sklearn.svm import SVC,SVR
 
 feature_file = 'hcpdata/fs_features.csv'
 gt_file = 'hcpdata/unrestricted_kaplan7_4_1_2019_18_31_31.csv' 
+train_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc16_11_labels16_smooth0.1_devr1.0_freqs0.05/train_aa'
+test_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc16_11_labels16_smooth0.1_devr1.0_freqs0.05/test_aa'
 
 column_tags = ['Gender','Strength_Unadj','FS_LCort_GM_Vol','FS_RCort_GM_Vol','FS_TotCort_GM_Vol','FS_SubCort_GM_Vol','FS_Total_GM_Vol','PicSeq_Unadj','CardSort_Unadj','Flanker_Unadj','PMAT24_A_CR','ReadEng_Unadj','PicVocab_Unadj','ProcSpeed_Unadj','VSPLOT_TC','IWRD_TOT','ListSort_Unadj','ER40_CR','LifeSatisf_Unadj','Endurance_Unadj','Dexterity_Unadj']
 
@@ -16,58 +18,69 @@ train_ids = inputs['ids']
 inputs = np.load(os.path.join(test_folder,'test_inf_inps.npy.npz'))
 test_ids = inputs['ids']
 
-def train_linear(tag,train_input,train_output,train_mask,test_input,test_output,test_mask):
+feature_tags = []
+with open(feature_file,'r') as csv_file:
+    csv_reader = csv.reader(csv_file)
+    for row in csv_reader:
+        assert len(row)==1
+        feature_tags.append(row[0])  
+
+def train_linear(tag,train_input,train_output,test_input,test_output,train_mask=None,test_mask=None):
+    if train_mask is None:
+        train_mask = np.arange(0,train_input.shape[0],1,dtype=int)
+
+    if test_mask is None:
+        test_mask = np.arange(0,test_input.shape[0],1,dtype=int)
+
     if tag == 'Gender':
-        classifier = LogisticRegression(random_state=0,solver='lbfgs',max_iter=10000,penalty='none').fit(train_input[train_mask],train_output)
-        #classifier = KNeighborsClassifier().fit(train_input[train_mask],train_output)
+        #classifier = LogisticRegression(random_state=0,solver='lbfgs',max_iter=10000,penalty='none').fit(train_input[train_mask],train_output)
+        classifier = KNeighborsClassifier().fit(train_input[train_mask],train_output)
         #classifier = GradientBoostingClassifier().fit(train_input[train_mask],train_output)
         #classifier = SVC().fit(train_input[train_mask],train_output)
         train_score = classifier.score(train_input[train_mask],train_output)
         test_score = classifier.score(test_input[test_mask],test_output)
         #classifier = LogisticRegression(random_state=0).fit(train_temp,train_outputs[:,pred_idx])
     else:
-        classifier = LinearRegression().fit(train_input[train_mask],train_output)
-        #classifier = KNeighborsRegressor().fit(train_input[train_mask],train_output)
+        #classifier = LinearRegression().fit(train_input[train_mask],train_output)
+        classifier = KNeighborsRegressor().fit(train_input[train_mask],train_output)
         #classifier = GradientBoostingRegressor().fit(train_input[train_mask],train_output)
         #classifier = SVR().fit(train_input[train_mask],train_output)
         train_score = classifier.score(train_input[train_mask],train_output)
         test_score = classifier.score(test_input[test_mask],test_output)
     return train_score,test_score
 
-print('--------- All seg and emb features -------------')
 train_perf = np.zeros(len(column_tags),dtype=np.float32)
 test_perf = np.zeros(len(column_tags),dtype=np.float32)
-for cid,tag in enumerate(column_tags):
-    print('Evaluating prediction performance for {}'.format(tag))
-    gtruths = {} 
+for cid,pred_tag in enumerate(column_tags):
+    print('Evaluating prediction performance for {}'.format(pred_tag))
+    features,gtruths = {},{} 
     with open(gt_file,mode='r') as csv_file:
         csv_reader = csv.reader(csv_file)
         for i,row in enumerate(csv_reader):
+            #print(type(row))
             row = np.array(row)
             if i==0:
-                idx = [j for j in range(len(row)) if row[j]==tag]
-                assert len(idx)==1
-                idx = idx[0]
+                gtidx = [j for j in range(len(row)) if row[j]==pred_tag]
+                assert len(gtidx)==1
+                gtidx = gtidx[0]
+                feidx = np.array([j for j in range(len(row)) if row[j] in feature_tags])
                 #print(labidx,row[labidx])
             else:
-                if row[idx] != '':
-                    gtruths.update({str(row[0]):row[idx]})
+                if row[gtidx]!='' and np.all(row[feidx]!=''):
+                    gtruths.update({str(row[0]):row[gtidx]})
+                    features.update({str(row[0]):row[feidx]})
 
-    train_out,train_mask = [],[]
+    train_out,train_in = [],[]
     for i in range(train_ids.size):
         if train_ids[i] in gtruths.keys(): 
             train_out.append(gtruths[train_ids[i]])
-            train_mask.append(True)
-        else:
-            train_mask.append(False)
+            train_in.append(features[train_ids[i]])
 
-    test_out,test_mask = [],[]
+    test_out,test_in = [],[]
     for i in range(test_ids.size):
         if test_ids[i] in gtruths.keys(): 
             test_out.append(gtruths[test_ids[i]])
-            test_mask.append(True)
-        else:
-            test_mask.append(False)
+            test_in.append(features[test_ids[i]])
 
     assert len(train_out)>300
     assert len(test_out)>300
@@ -76,50 +89,16 @@ for cid,tag in enumerate(column_tags):
 
     train_out = np.array(train_out)
     test_out = np.array(test_out)
-    train_mask = np.array(train_mask)
-    test_mask = np.array(test_mask)
-    if tag != 'Gender':
+    train_in = np.stack(train_in,axis=0).astype(float)
+    test_in = np.stack(test_in,axis=0).astype(float)
+    if pred_tag != 'Gender':
         train_out = train_out.astype(float)    
         test_out = test_out.astype(float)    
 
-    rid = 0
-    train_in = np.concatenate((np.reshape(train_neigh_sims,(train_num,-1)),np.reshape(train_seg_probs,(train_num,-1)),np.reshape(train_emb_codes,(train_num,-1))),axis=-1)
-    test_in = np.concatenate((np.reshape(test_neigh_sims,(test_num,-1)),np.reshape(test_seg_probs,(test_num,-1)),np.reshape(test_emb_codes,(test_num,-1))),axis=-1)
-    train_perf[rid,cid],test_perf[rid,cid] = train_linear(tag,train_in,train_out,train_mask,test_in,test_out,test_mask)
+    train_perf[cid],test_perf[cid] = train_linear(pred_tag,train_in,train_out,test_in,test_out)
     #print(train_in.shape,test_in.shape)
 
-    rid = rid+1
-    train_in = np.concatenate((np.reshape(train_neigh_sims,(train_num,-1)),np.reshape(train_seg_probs,(train_num,-1))),axis=-1)
-    test_in = np.concatenate((np.reshape(test_neigh_sims,(test_num,-1)),np.reshape(test_seg_probs,(test_num,-1))),axis=-1)
-    train_perf[rid,cid],test_perf[rid,cid] = train_linear(tag,train_in,train_out,train_mask,test_in,test_out,test_mask)
-    #print(train_in.shape,test_in.shape)
+np.savez('nn_fs_perfs.npz',train_perf=train_perf,test_perf=test_perf,column_tags=column_tags)
 
-    rid = rid+1
-    train_in = np.reshape(train_emb_codes,(train_num,-1))
-    test_in = np.reshape(test_emb_codes,(test_num,-1))
-    train_perf[rid,cid],test_perf[rid,cid] = train_linear(tag,train_in,train_out,train_mask,test_in,test_out,test_mask)
-    #print(train_in.shape,test_in.shape)
-
-    for i in range(num_labels):
-        rid = rid+1
-        train_in = np.concatenate((np.reshape(train_neigh_sims[:,i],(train_num,-1)),np.reshape(train_seg_probs[:,i],(train_num,-1)),np.reshape(train_emb_codes[:,i],(train_num,-1))),axis=-1)
-        test_in = np.concatenate((np.reshape(test_neigh_sims[:,i],(test_num,-1)),np.reshape(test_seg_probs[:,i],(test_num,-1)),np.reshape(test_emb_codes[:,i],(test_num,-1))),axis=-1)
-        train_perf[rid,cid],test_perf[rid,cid] = train_linear(tag,train_in,train_out,train_mask,test_in,test_out,test_mask)
-        #print(train_in.shape,test_in.shape)
-
-        rid = rid+1
-        train_in = np.concatenate((np.reshape(train_neigh_sims[:,i],(train_num,-1)),np.reshape(train_seg_probs[:,i],(train_num,-1))),axis=-1)
-        test_in = np.concatenate((np.reshape(test_neigh_sims[:,i],(test_num,-1)),np.reshape(test_seg_probs[:,i],(test_num,-1))),axis=-1)
-        train_perf[rid,cid],test_perf[rid,cid] = train_linear(tag,train_in,train_out,train_mask,test_in,test_out,test_mask)
-        #print(train_in.shape,test_in.shape)
-
-        rid = rid+1
-        train_in = np.reshape(train_emb_codes[:,i],(train_num,-1))
-        test_in = np.reshape(test_emb_codes[:,i],(test_num,-1))
-        train_perf[rid,cid],test_perf[rid,cid] = train_linear(tag,train_in,train_out,train_mask,test_in,test_out,test_mask)
-        #print(train_in.shape,test_in.shape)
-
-np.savez('perfs.npz',train_perf=train_perf,test_perf=test_perf,row_tags=row_tags,column_tags=column_tags)
-
-    #mcls = 'M' if np.sum(train_outputs[:,0]=='M')>np.sum(train_outputs[:,0]=='F') else 'F'
-    #print('Test majority',np.mean(test_outputs[:,0]==mcls))
+print('Train perf',train_perf)
+print('Test perf',test_perf)
