@@ -5,13 +5,28 @@ from sklearn.linear_model import LogisticRegression,LinearRegression
 from sklearn.neighbors import KNeighborsRegressor,KNeighborsClassifier
 from sklearn.ensemble import GradientBoostingClassifier,GradientBoostingRegressor
 from sklearn.svm import SVC,SVR
+from sklearn.neural_network import MLPClassifier,MLPRegressor
+from sklearn.dummy import DummyClassifier,DummyRegressor
 
 feature_file = 'hcpdata/fs_features.csv'
 gt_file = 'hcpdata/unrestricted_kaplan7_4_1_2019_18_31_31.csv' 
 train_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc16_11_labels16_smooth0.1_devr1.0_freqs0.05/train_aa'
 test_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc16_11_labels16_smooth0.1_devr1.0_freqs0.05/test_aa'
 
-column_tags = ['Gender','Strength_Unadj','FS_LCort_GM_Vol','FS_RCort_GM_Vol','FS_TotCort_GM_Vol','FS_SubCort_GM_Vol','FS_Total_GM_Vol','PicSeq_Unadj','CardSort_Unadj','Flanker_Unadj','PMAT24_A_CR','ReadEng_Unadj','PicVocab_Unadj','ProcSpeed_Unadj','VSPLOT_TC','IWRD_TOT','ListSort_Unadj','ER40_CR','LifeSatisf_Unadj','Endurance_Unadj','Dexterity_Unadj']
+#column_tags = ['Gender','Strength_Unadj','WM_Task_Acc','PicSeq_Unadj','CardSort_Unadj','Flanker_Unadj','PMAT24_A_CR','ReadEng_Unadj','PicVocab_Unadj','ProcSpeed_Unadj','VSPLOT_TC','IWRD_TOT','ListSort_Unadj','ER40_CR','LifeSatisf_Unadj','Endurance_Unadj','Dexterity_Unadj']
+column_tags = ['Strength_Unadj', 'Strength_AgeAdj', 'NEORAW_01', 'NEORAW_02',
+       'NEORAW_03', 'NEORAW_04', 'NEORAW_05', 'NEORAW_06', 'NEORAW_07',
+       'NEORAW_08', 'NEORAW_09', 'NEORAW_10', 'NEORAW_11', 'NEORAW_12',
+       'NEORAW_13', 'NEORAW_14', 'NEORAW_15', 'NEORAW_16', 'NEORAW_17',
+       'NEORAW_18', 'NEORAW_19', 'NEORAW_20', 'NEORAW_21', 'NEORAW_22',
+       'NEORAW_23', 'NEORAW_24', 'NEORAW_25', 'NEORAW_26', 'NEORAW_27',
+       'NEORAW_28', 'NEORAW_29', 'NEORAW_30', 'NEORAW_31', 'NEORAW_32',
+       'NEORAW_33', 'NEORAW_34', 'NEORAW_35', 'NEORAW_36', 'NEORAW_37',
+       'NEORAW_38', 'NEORAW_39', 'NEORAW_40', 'NEORAW_41', 'NEORAW_42',
+       'NEORAW_43', 'NEORAW_44', 'NEORAW_45', 'NEORAW_46', 'NEORAW_47',
+       'NEORAW_48', 'NEORAW_49', 'NEORAW_50', 'NEORAW_51', 'NEORAW_52',
+       'NEORAW_53', 'NEORAW_54', 'NEORAW_55', 'NEORAW_56', 'NEORAW_57',
+       'NEORAW_58', 'NEORAW_59', 'NEORAW_60']
 
 inputs = np.load(os.path.join(train_folder,'train_inf_inps.npy.npz'))
 train_ids = inputs['ids']
@@ -32,19 +47,23 @@ def train_linear(tag,train_input,train_output,test_input,test_output,train_mask=
     if test_mask is None:
         test_mask = np.arange(0,test_input.shape[0],1,dtype=int)
 
-    if tag == 'Gender':
+    if tag == 'Gender' or 'NEORAW_' in tag:
         #classifier = LogisticRegression(random_state=0,solver='lbfgs',max_iter=10000,penalty='none').fit(train_input[train_mask],train_output)
-        classifier = KNeighborsClassifier().fit(train_input[train_mask],train_output)
+        #classifier = KNeighborsClassifier().fit(train_input[train_mask],train_output)
         #classifier = GradientBoostingClassifier().fit(train_input[train_mask],train_output)
         #classifier = SVC().fit(train_input[train_mask],train_output)
+        #classifier = MLPClassifier(hidden_layer_sizes=(64,16,4),alpha=1e-6,max_iter=1000,solver='lbfgs').fit(train_input[train_mask],train_output)
+        classifier = DummyClassifier(strategy='most_frequent').fit(train_input[train_mask],train_output)
         train_score = classifier.score(train_input[train_mask],train_output)
         test_score = classifier.score(test_input[test_mask],test_output)
         #classifier = LogisticRegression(random_state=0).fit(train_temp,train_outputs[:,pred_idx])
     else:
         #classifier = LinearRegression().fit(train_input[train_mask],train_output)
-        classifier = KNeighborsRegressor().fit(train_input[train_mask],train_output)
+        #classifier = KNeighborsRegressor().fit(train_input[train_mask],train_output)
         #classifier = GradientBoostingRegressor().fit(train_input[train_mask],train_output)
         #classifier = SVR().fit(train_input[train_mask],train_output)
+        #classifier = MLPRegressor(hidden_layer_sizes=(64,16,4),alpha=1e-6,max_iter=1000,solver='lbfgs').fit(train_input[train_mask],train_output)
+        classifier = DummyRegressor(strategy='mean').fit(train_input[train_mask],train_output)
         train_score = classifier.score(train_input[train_mask],train_output)
         test_score = classifier.score(test_input[test_mask],test_output)
     return train_score,test_score
@@ -91,14 +110,14 @@ for cid,pred_tag in enumerate(column_tags):
     test_out = np.array(test_out)
     train_in = np.stack(train_in,axis=0).astype(float)
     test_in = np.stack(test_in,axis=0).astype(float)
-    if pred_tag != 'Gender':
+    if pred_tag != 'Gender' and 'NEORAW_' not in pred_tag:
         train_out = train_out.astype(float)    
         test_out = test_out.astype(float)    
 
     train_perf[cid],test_perf[cid] = train_linear(pred_tag,train_in,train_out,test_in,test_out)
     #print(train_in.shape,test_in.shape)
 
-np.savez('nn_fs_perfs.npz',train_perf=train_perf,test_perf=test_perf,column_tags=column_tags)
+np.savez('fs_dum_perfs.npz',train_perf=train_perf,test_perf=test_perf,column_tags=column_tags)
 
 print('Train perf',train_perf)
 print('Test perf',test_perf)

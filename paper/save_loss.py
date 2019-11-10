@@ -32,11 +32,11 @@ for load_epoch in range(num_epochs):
         break
     autoseg = AutoSegmenter(num_labels,sizes=dims,data_chan=data_chan,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=0.0,min_freqs=min_freqs,batch=batch,lr=lr,unet_chan=unet_chan,unet_blocks=unet_blocks,aenc_chan=aenc_chan,aenc_depth=aenc_depth,re_pow=re_pow,device='cuda',checkpoint_dir=log_dir,load_checkpoint_epoch=load_epoch)
    
-    tot,mse,smooth,devr = autoseg.test(train_data)
-    train_tot.append(tot)
-    train_mse.append(mse)
-    train_smooth.append(smooth)
-    train_devr.append(devr) 
+#    tot,mse,smooth,devr = autoseg.test(train_data)
+#    train_tot.append(tot)
+#    train_mse.append(mse)
+#    train_smooth.append(smooth)
+#    train_devr.append(devr) 
     
     tot,mse,smooth,devr = autoseg.test(test_data)
     test_tot.append(tot)
@@ -44,10 +44,10 @@ for load_epoch in range(num_epochs):
     test_smooth.append(smooth)
     test_devr.append(devr) 
 
-    #train_tot.append(autoseg.train_tot_loss)
-    #train_mse.append(autoseg.train_mse_loss)
-    #train_smooth.append(autoseg.train_smooth_loss)
-    #train_devr.append(autoseg.train_devr_loss)
+    train_tot.append(autoseg.train_tot_loss)
+    train_mse.append(autoseg.train_mse_loss)
+    train_smooth.append(autoseg.train_smooth_loss)
+    train_devr.append(autoseg.train_devr_loss)
     #test_tot.append(autoseg.test_tot_loss)
     #test_mse.append(autoseg.test_mse_loss)
     #test_smooth.append(autoseg.test_smooth_loss)

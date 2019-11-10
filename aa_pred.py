@@ -5,21 +5,44 @@ from sklearn.linear_model import LogisticRegression,LinearRegression
 from sklearn.neighbors import KNeighborsRegressor,KNeighborsClassifier
 from sklearn.ensemble import GradientBoostingClassifier,GradientBoostingRegressor
 from sklearn.svm import SVC,SVR
+from sklearn.neural_network import MLPClassifier,MLPRegressor
 
-train_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc16_11_labels16_smooth0.1_devr1.0_freqs0.05/train_aa'
-test_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc16_11_labels16_smooth0.1_devr1.0_freqs0.05/test_aa'
+train_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc4_11_labels16_smooth0.1_devr1.0_freqs0.05/train_aa'
+test_folder = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc4_11_labels16_smooth0.1_devr1.0_freqs0.05/test_aa'
 gt_file = 'hcpdata/unrestricted_kaplan7_4_1_2019_18_31_31.csv' 
 
-column_tags = ['Gender','Strength_Unadj','FS_LCort_GM_Vol','FS_RCort_GM_Vol','FS_TotCort_GM_Vol','FS_SubCort_GM_Vol','FS_Total_GM_Vol','PicSeq_Unadj','CardSort_Unadj','Flanker_Unadj','PMAT24_A_CR','ReadEng_Unadj','PicVocab_Unadj','ProcSpeed_Unadj','VSPLOT_TC','IWRD_TOT','ListSort_Unadj','ER40_CR','LifeSatisf_Unadj','Endurance_Unadj','Dexterity_Unadj']
+#column_tags = ['Gender','Strength_Unadj','FS_LCort_GM_Vol','FS_RCort_GM_Vol','FS_TotCort_GM_Vol','FS_SubCort_GM_Vol','FS_Total_GM_Vol','PicSeq_Unadj','CardSort_Unadj','Flanker_Unadj','PMAT24_A_CR','ReadEng_Unadj','PicVocab_Unadj','ProcSpeed_Unadj','VSPLOT_TC','IWRD_TOT','ListSort_Unadj','ER40_CR','LifeSatisf_Unadj','Endurance_Unadj','Dexterity_Unadj']
+#column_tags = ['Strength_Unadj','MMSE_Score','PicSeq_Unadj','CardSort_Unadj','Flanker_Unadj','PMAT24_A_CR','ReadEng_Unadj','PicVocab_Unadj','ProcSpeed_Unadj','VSPLOT_TC','IWRD_TOT','ListSort_Unadj','ER40_CR','LifeSatisf_Unadj','Endurance_Unadj','Dexterity_Unadj']
+column_tags = ['Strength_Unadj', 'Strength_AgeAdj']
+"""'NEORAW_01', 'NEORAW_02',
+       'NEORAW_03', 'NEORAW_04', 'NEORAW_05', 'NEORAW_06', 'NEORAW_07',
+       'NEORAW_08', 'NEORAW_09', 'NEORAW_10', 'NEORAW_11', 'NEORAW_12',
+       'NEORAW_13', 'NEORAW_14', 'NEORAW_15', 'NEORAW_16', 'NEORAW_17',
+       'NEORAW_18', 'NEORAW_19', 'NEORAW_20', 'NEORAW_21', 'NEORAW_22',
+       'NEORAW_23', 'NEORAW_24', 'NEORAW_25', 'NEORAW_26', 'NEORAW_27',
+       'NEORAW_28', 'NEORAW_29', 'NEORAW_30', 'NEORAW_31', 'NEORAW_32',
+       'NEORAW_33', 'NEORAW_34', 'NEORAW_35', 'NEORAW_36', 'NEORAW_37',
+       'NEORAW_38', 'NEORAW_39', 'NEORAW_40', 'NEORAW_41', 'NEORAW_42',
+       'NEORAW_43', 'NEORAW_44', 'NEORAW_45', 'NEORAW_46', 'NEORAW_47',
+       'NEORAW_48', 'NEORAW_49', 'NEORAW_50', 'NEORAW_51', 'NEORAW_52',
+       'NEORAW_53', 'NEORAW_54', 'NEORAW_55', 'NEORAW_56', 'NEORAW_57',
+       'NEORAW_58', 'NEORAW_59', 'NEORAW_60', 'PicSeq_Unadj','CardSort_Unadj','Flanker_Unadj','PMAT24_A_CR','ReadEng_Unadj','PicVocab_Unadj','ProcSpeed_Unadj','VSPLOT_TC','IWRD_TOT','ListSort_Unadj','ER40_CR','LifeSatisf_Unadj','Endurance_Unadj','Dexterity_Unadj']"""
 
-inputs = np.load(os.path.join(train_folder,'train_inf_inps.npy.npz'))
+#with open('hcpdata/targets.csv','r') as csv_file:
+#    csv_reader = csv.reader(csv_file)
+#    for row in csv_reader:
+#        assert len(row)==1
+#        column_tags.append(row[0])  
+
+inputs = np.load(os.path.join(train_folder,'train_inf_inps.npz'))
 train_neigh_sims = inputs['neigh_sims']
 train_seg_probs = inputs['seg_probs']
 train_emb_codes = inputs['emb_codes']
 train_ids = inputs['ids']
 train_num = len(train_ids)
+print(train_emb_codes)
 
-inputs = np.load(os.path.join(test_folder,'test_inf_inps.npy.npz'))
+inputs = np.load(os.path.join(test_folder,'test_inf_inps.npz'))
 test_neigh_sims = inputs['neigh_sims']
 test_seg_probs = inputs['seg_probs']
 test_emb_codes = inputs['emb_codes']
@@ -34,21 +57,29 @@ for i in range(num_labels):
     row_tags += ['lab{}_seg_emb'.format(i),'lab{}_seg'.format(i),'lab{}_emb'.format(i)] 
 
 def train_linear(tag,train_input,train_output,train_mask,test_input,test_output,test_mask):
-    if tag == 'Gender':
+    #if 'WM' in tag:
+    #    print(train_output)
+    if tag == 'Gender' or 'NEORAW_' in tag:
         #classifier = LogisticRegression(random_state=0,solver='lbfgs',max_iter=10000,penalty='none').fit(train_input[train_mask],train_output)
         #classifier = KNeighborsClassifier().fit(train_input[train_mask],train_output)
-        #classifier = GradientBoostingClassifier().fit(train_input[train_mask],train_output)
-        classifier = SVC().fit(train_input[train_mask],train_output)
+        classifier = GradientBoostingClassifier().fit(train_input[train_mask],train_output)
+        #classifier = SVC().fit(train_input[train_mask],train_output)
+        #classifier = MLPClassifier(hidden_layer_sizes=(64,16,4),max_iter=1000,solver='lbfgs').fit(train_input[train_mask],train_output)
         train_score = classifier.score(train_input[train_mask],train_output)
         test_score = classifier.score(test_input[test_mask],test_output)
         #classifier = LogisticRegression(random_state=0).fit(train_temp,train_outputs[:,pred_idx])
+        if train_input.shape[1]>256:
+            print(train_score,test_score)
     else:
         #classifier = LinearRegression().fit(train_input[train_mask],train_output)
         #classifier = KNeighborsRegressor().fit(train_input[train_mask],train_output)
-        #classifier = GradientBoostingRegressor().fit(train_input[train_mask],train_output)
-        classifier = SVR().fit(train_input[train_mask],train_output)
+        classifier = GradientBoostingRegressor().fit(train_input[train_mask],train_output)
+        #classifier = SVR().fit(train_input[train_mask],train_output)
+        #classifier = MLPRegressor(hidden_layer_sizes=(64,16,4),max_iter=1000,solver='lbfgs').fit(train_input[train_mask],train_output)
         train_score = classifier.score(train_input[train_mask],train_output)
         test_score = classifier.score(test_input[test_mask],test_output)
+        if train_input.shape[1]>256:
+            print(train_score,test_score)
     return train_score,test_score
 
 print('--------- All seg and emb features -------------')
@@ -95,7 +126,7 @@ for cid,tag in enumerate(column_tags):
     test_out = np.array(test_out)
     train_mask = np.array(train_mask)
     test_mask = np.array(test_mask)
-    if tag != 'Gender':
+    if tag != 'Gender' and 'NEORAW_' not in tag:
         train_out = train_out.astype(float)    
         test_out = test_out.astype(float)    
 
@@ -135,8 +166,8 @@ for cid,tag in enumerate(column_tags):
         test_in = np.reshape(test_emb_codes[:,i],(test_num,-1))
         train_perf[rid,cid],test_perf[rid,cid] = train_linear(tag,train_in,train_out,train_mask,test_in,test_out,test_mask)
         #print(train_in.shape,test_in.shape)
+        #mcls = 'M' if np.sum(train_outputs[:,0]=='M')>np.sum(train_outputs[:,0]=='F') else 'F'
+        #print('Test majority',np.mean(test_outputs[:,0]==mcls))
 
-np.savez('perfs.npz',train_perf=train_perf,test_perf=test_perf,row_tags=row_tags,column_tags=column_tags)
-
-    #mcls = 'M' if np.sum(train_outputs[:,0]=='M')>np.sum(train_outputs[:,0]=='F') else 'F'
-    #print('Test majority',np.mean(test_outputs[:,0]==mcls))
+np.savez('aa4_boost_perfs.npz',train_perf=train_perf,test_perf=test_perf,row_tags=row_tags,column_tags=column_tags)
+print(test_perf[0,:])

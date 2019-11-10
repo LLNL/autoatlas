@@ -48,7 +48,7 @@ def get_IO(aa_folder,mode):
     neigh_sims = np.stack(neigh_sims,axis=0)
     seg_probs = np.stack(seg_probs,axis=0)
     emb_codes = np.stack(emb_codes,axis=0)
-    np.savez(os.path.join(aa_folder,'{}_inf_inps.npy'.format(mode)),neigh_sims=neigh_sims,seg_probs=seg_probs,emb_codes=emb_codes,ids=np.array(aa_ids))
+    np.savez(os.path.join(aa_folder,'{}_inf_inps.npz'.format(mode)),neigh_sims=neigh_sims,seg_probs=seg_probs,emb_codes=emb_codes,ids=np.array(aa_ids))
 
 get_IO(train_folder,'train')
 get_IO(test_folder,'test')
