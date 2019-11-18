@@ -18,6 +18,7 @@ neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
 
 def get_IO(aa_folder,mode):
     aa_files = [os.path.join(aa_folder,f) for f in os.listdir(aa_folder) if f[-18:]=='_T1w_brain_2_aa.h5']
+    aa_files.sort()
     print('{} files located in {}'.format(len(aa_files),aa_folder))
     aa_ids = [filen.split('/')[-1].split('_')[0] for filen in aa_files]
 

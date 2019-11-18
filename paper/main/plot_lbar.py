@@ -7,11 +7,11 @@ import matplotlib as mpl
 achans = [4,16]
 
 log_dir = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc{}_11_labels16_smooth0.1_devr1.0_freqs0.05'
-optimizers = ['lin','nneigh','boost','mlp']
-opts_labels = ['Linear','NNeighbor','Boosting','MLPerceptron']
+optimizers = ['lin','nneigh','svm','mlp']
+opts_labels = ['Linear','NNeighbor','SVM','MLPerceptron']
 aa_prefix = '_aa{}_tag{}_opt{}.npz'
 fs_prefix = '_fs_tag{}_opt{}.npz'
-aa_0 = 5
+aa_0 = 3
 aa_step = 3
 
 column_tags = ['Strength_Unadj','Gender']

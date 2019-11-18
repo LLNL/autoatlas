@@ -2,7 +2,7 @@ import numpy as np
 import os
 import h5py
 
-num_vols = 10
+num_vols = None
 
 achans = [4,8,16]
 
@@ -15,6 +15,10 @@ for ac in achans:
 
     foreg_err = 0
     backg_err = 0
+    if num_vols is None:
+        num_vols = len(test_files)
+    print('Number of volumes is {}'.format(num_vols))
+
     for i in range(num_vols):
         with h5py.File(test_files[i],'r') as f:
             gt = np.array(f['ground_truth'])[np.newaxis]
