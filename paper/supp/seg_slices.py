@@ -4,8 +4,7 @@ import h5py
 import matplotlib.pyplot as plt
 
 achan = 4
-test_start = 6
-num_test = 6
+test_sample = 4
 
 log_dir = '/p/lustre1/mohan3/Data/TBI/2mm/segin_norm2_linbott_aenc{}_11_labels16_smooth0.1_devr1.0_freqs0.05'
 num_labels = 16
@@ -28,22 +27,20 @@ test_folder = os.path.join(log_dir.format(achan),'test_aa')
 test_files = [os.path.join(test_folder,f) for f in os.listdir(test_folder) if f[-3:]=='.h5']
 test_files.sort()
 
-for i in range(test_start,test_start+num_test):
-    print(test_files[i])
-    with h5py.File(test_files[i],'r') as f:
-        gt = np.array(f['ground_truth'])
-        seg = np.array(f['segmentation'])
-        rec = np.array(f['reconstruction'])
-        mk = np.array(f['mask'])
-    seg = seg*mk[np.newaxis]
-    #rec = rec*mk[np.newaxis]
-    #rec = np.sum(rec*seg,axis=0)
-    seg = np.sum(seg[:,:,:,:,np.newaxis]*rgb_list[:,np.newaxis,np.newaxis,np.newaxis],axis=0).astype(np.uint8)
+i = test_sample
+with h5py.File(test_files[i],'r') as f:
+    gt = np.array(f['ground_truth'])
+    seg = np.array(f['segmentation'])
+    rec = np.array(f['reconstruction'])
+    mk = np.array(f['mask'])
+seg = seg*mk[np.newaxis]
+rec = rec*mk[np.newaxis]
+rec = np.sum(rec*seg,axis=0)
+seg = np.sum(seg[:,:,:,:,np.newaxis]*rgb_list[:,np.newaxis,np.newaxis,np.newaxis],axis=0).astype(np.uint8)
 
-    sh = rec.shape
-    save_fig(gt[sh[0]//2],'gt{}_aenc{}_z.png'.format(i,achan),cmap='gray')
-    save_fig(gt[:,sh[1]//2],'gt{}_aenc{}_y.png'.format(i,achan),cmap='gray')
-    save_fig(gt[:,:,sh[2]//2],'gt{}_aenc{}_x.png'.format(i,achan),cmap='gray')
-    save_fig(seg[sh[0]//2],'seg{}_aenc{}_z.png'.format(i,achan))
-    save_fig(seg[:,sh[1]//2],'seg{}_aenc{}_y.png'.format(i,achan))
-    save_fig(seg[:,:,sh[2]//2],'seg{}_aenc{}_x.png'.format(i,achan))
+sh = seg.shape
+for j in range(0,sh[2],4):
+    save_fig(gt[:,:,j],'gt{}_aenc{}_sl{}_x.png'.format(i,achan,j),cmap='gray')
+    save_fig(seg[:,:,j],'seg{}_aenc{}_sl{}_x.png'.format(i,achan,j))
+
+
