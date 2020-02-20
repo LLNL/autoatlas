@@ -1,7 +1,7 @@
 import torch
 import os
-from cnn import UNet,AutoEnc
-from models import SegmRecon
+from autoatlas.cnn import UNet,AutoEnc
+from autoatlas.models import SegmRecon
 from torch.utils.data import DataLoader
 import progressbar
 import numpy as np
@@ -9,13 +9,11 @@ import multiprocessing as mp
 import h5py
 
 class CustomLoss:
-    def __init__(self,dim=3,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,entr_norm=1.0,min_freqs=0.01,npow=1):
-        print('CustomLoss: dim={},smooth_reg={},devr_reg={},entr_reg={},entr_norm={},min_freqs={},npow={}'.format(dim,smooth_reg,devr_reg,entr_reg,entr_norm,min_freqs,npow))
+    def __init__(self,dim=3,smooth_reg=0.0,devr_reg=0.0,min_freqs=0.01,npow=2):
+        print('CustomLoss: dim={},smooth_reg={},devr_reg={},min_freqs={},npow={}'.format(dim,smooth_reg,devr_reg,min_freqs,npow))
 
         self.smooth_reg = smooth_reg
         self.devr_reg = devr_reg
-        self.entr_reg = entr_reg
-        self.entr_norm = entr_norm
         self.min_freqs = min_freqs
         self.npow = npow
         self.dim = dim
@@ -70,36 +68,53 @@ class CustomLoss:
         clp = torch.clamp(clp,min=0)
         return self.devr_reg*torch.mean(clp)
     
-    #def entr_loss(self,Z,normZ): #Must reduce entropy at each voxel. Force each voxel to be a single class.
-    #    return -self.entr_reg*torch.mean(normZ*self.logsoftmax(Z))/self.entr_norm
-
-class AutoSegmenter:
-    def __init__(self,num_labels,sizes,data_chan=1,smooth_reg=0.0,devr_reg=0.0,entr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,unet_chan=32,unet_blocks=9,aenc_chan=16,aenc_depth=8,re_pow=1,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
+class AutoAtlas:
+    def __init__(self,num_labels,sizes,data_chan=1,smooth_reg=0.0,devr_reg=0.0,min_freqs=0.01,batch=16,lr=1e-3,unet_chan=32,unet_blocks=9,aenc_chan=16,aenc_depth=8,re_pow=2,distr=False,device='cpu',checkpoint_dir='./checkpoints/',load_checkpoint_epoch=None):
         dim = len(sizes)
         self.lr = lr
         self.batch = batch
-        self.device = device
         self.checkpoint_dir = checkpoint_dir
         self.data_chan = data_chan
         self.smooth_reg = smooth_reg
         self.devr_reg = devr_reg
-        self.entr_reg = entr_reg
+        self.dev_list = None
+        if distr==True and device=='cuda':
+            self.acc_dev = '{}:0'.format(device)
+            dev_count = torch.cuda.device_count()
+            assert dev_count>=1 and dev_count<=4
+            self.cnnenc_dev,self.cnndec_dev = '{}:0'.format(device),'{}:0'.format(device)
+            if dev_count>=3:
+                self.cnndec_dev = '{}:1'.format(device)
+            self.aenc_devs = [] 
+            for i in range(num_labels):
+                if dev_count <= 3:
+                    devid = dev_count-1
+                else:
+                    devid = 2 if i%2==0 else 3
+                self.aenc_devs.append('{}:{}'.format(device,devid))
+        elif distr==False and device=='cuda':
+            self.acc_dev = 'cuda'
+            self.cnnenc_dev,self.cnndec_dev = 'cuda','cuda'
+            self.aenc_devs = ['cuda' for i in range(num_labels)] 
+        else:
+            raise ValueError('Combination of distr={} and device={} is not supported'.format(distr,device))
+        assert self.acc_dev==self.cnnenc_dev
 
-        self.cnn = UNet(num_labels,dim=dim,data_chan=data_chan,kernel_size=3,filters=unet_chan,blocks=unet_blocks,batch_norm=False,pad_type='SAME')
+        #print("Devices: Accumulator {}, CNN encoder {}, CNN decoder {}, autoencoders {}".format(self.acc_dev,self.cnnenc_dev,self.cnndec_dev,self.aenc_devs))
+        self.cnn = UNet(num_labels,dim=dim,data_chan=data_chan,kernel_size=3,filters=unet_chan,blocks=unet_blocks,batch_norm=False,pad_type='SAME',enc_dev=self.cnnenc_dev,dec_dev=self.cnndec_dev)
    
         self.autoencs = torch.nn.ModuleList([])
-        for _ in range(num_labels):
-            self.autoencs.append(AutoEnc(sizes,data_chan=data_chan,kernel_size=7,filters=aenc_chan,depth=aenc_depth,pool=2,batch_norm=False,pad_type='SAME')) 
-            #self.autoencs.append(AutoEnc(kernel_size=7,filters=8,depth=4,pool=4,batch_norm=False,pad_type='SAME')) 
-        self.model = SegmRecon(self.cnn,self.autoencs)
-        self.model = self.model.to(self.device)
-
-        if self.device == 'cuda':
-            self.model = torch.nn.DataParallel(self.model)
+        for i in range(num_labels):
+            self.autoencs.append(AutoEnc(sizes,data_chan=data_chan,kernel_size=7,filters=aenc_chan,depth=aenc_depth,pool=2,batch_norm=False,pad_type='SAME').to(self.aenc_devs[i])) 
+        
+        self.model = SegmRecon(self.cnn,self.autoencs,self.aenc_devs)
+        if distr==False and device == 'cuda':
+            print('Using torch.nn.DataParallel for parallel processing')
+            devids = list(range(torch.cuda.device_count()))
+            self.model = torch.nn.DataParallel(self.model,device_ids=devids)
             torch.backends.cudnn.benchmark = True
-            #torch.backends.cudnn.benchmark = False #True results in cuDNN error: CUDNN_STATUS_INTERNAL_ERROR on pascal
        
-        self.criterion = CustomLoss(dim=dim,smooth_reg=smooth_reg,devr_reg=devr_reg,entr_reg=entr_reg,entr_norm=np.log(num_labels),min_freqs=min_freqs,npow=re_pow)
+        self.criterion = CustomLoss(dim=dim,smooth_reg=smooth_reg,devr_reg=devr_reg,min_freqs=min_freqs,npow=re_pow)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=lr) 
 
         if load_checkpoint_epoch is not None:
@@ -115,12 +130,10 @@ class AutoSegmenter:
                 self.train_tot_loss = checkpoint['train_tot_loss']
                 self.train_mse_loss = checkpoint['train_mse_loss']
                 self.train_smooth_loss = checkpoint['train_smooth_loss']
-                self.train_entr_loss = checkpoint['train_entr_loss']
                 self.train_devr_loss = checkpoint['train_devr_loss']
                 self.test_tot_loss = checkpoint['test_tot_loss']
                 self.test_mse_loss = checkpoint['test_mse_loss']
                 self.test_smooth_loss = checkpoint['test_smooth_loss']
-                self.test_entr_loss = checkpoint['test_entr_loss']
                 self.test_devr_loss = checkpoint['test_devr_loss']
                 print('Loaded model from epoch: {}'.format(self.start_epoch),flush=True)
                 print('Model stats: train loss={:.3e}, test loss={:.3e}'.format(self.train_tot_loss,self.test_tot_loss),flush=True)
@@ -129,12 +142,10 @@ class AutoSegmenter:
             self.train_tot_loss = float('inf')
             self.train_mse_loss = float('inf')
             self.train_smooth_loss = float('inf')
-            self.train_entr_loss = float('inf')
             self.train_devr_loss = float('inf')
             self.test_tot_loss = float('inf')
             self.test_mse_loss = float('inf')
             self.test_smooth_loss = float('inf')
-            self.test_entr_loss = float('inf')
             self.test_devr_loss = float('inf')
 
         if not os.path.exists(self.checkpoint_dir):
@@ -148,57 +159,52 @@ class AutoSegmenter:
         self.model.train()
        
         num_batch = 0 
-        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss = 0.0,0.0,0.0,0.0,0.0
+        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss = 0.0,0.0,0.0,0.0
         for data_in,mask_in in train_loader:
-            data_in = data_in.to(self.device)
-            mask_in = mask_in.to(self.device)
+            data_in = data_in.to(self.cnnenc_dev)
+            mask_in = mask_in.to(self.acc_dev)
 
             self.optimizer.zero_grad()
-            seg,norm_seg,data_out = self.model(data_in)
-            
+            norm_seg,data_out,_ = self.model(data_in)
+            norm_seg = norm_seg.to(self.acc_dev)           
+            data_out = [d.to(self.acc_dev) for d in data_out]         
+ 
             mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
             if self.smooth_reg>0:
                 smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
             else:
-                smooth_loss = torch.FloatTensor([0]).to(self.device)
-            if self.entr_reg>0:
-                entr_loss = self.criterion.entr_loss(seg,norm_seg)
-            else:
-                entr_loss = torch.FloatTensor([0]).to(self.device)
+                smooth_loss = torch.FloatTensor([0]).to(self.acc_dev)
             if self.devr_reg>0:
                 devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
             else:
-                devr_loss = torch.FloatTensor([0]).to(self.device)
-            tot_loss = mse_loss+smooth_loss+entr_loss+devr_loss
+                devr_loss = torch.FloatTensor([0]).to(self.acc_dev)
+            tot_loss = mse_loss+smooth_loss+devr_loss
 
+            #import pdb; pdb.set_trace()
             tot_loss.backward()
             self.optimizer.step()
 
             batch_mse_loss = mse_loss.item()
             batch_smooth_loss = smooth_loss.item()
-            batch_entr_loss = entr_loss.item()
             batch_devr_loss = devr_loss.item()
             batch_tot_loss = tot_loss.item()
 
             avg_mse_loss += batch_mse_loss
             avg_smooth_loss += batch_smooth_loss
-            avg_entr_loss += batch_entr_loss
             avg_devr_loss += batch_devr_loss
             avg_tot_loss += batch_tot_loss
             num_batch += 1
-            print("TRAIN: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_entr_loss,batch_devr_loss))
+            print("TRAIN: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_devr_loss))
 
         avg_tot_loss /= num_batch
         avg_mse_loss /= num_batch
         avg_smooth_loss /= num_batch
-        avg_entr_loss /= num_batch
         avg_devr_loss /= num_batch
-        print("TRAIN: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss))
+        print("TRAIN: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss))
 
         self.train_tot_loss = avg_tot_loss
         self.train_mse_loss = avg_mse_loss
         self.train_smooth_loss = avg_smooth_loss
-        self.train_entr_loss = avg_entr_loss
         self.train_devr_loss = avg_devr_loss
         return avg_tot_loss
 
@@ -210,53 +216,48 @@ class AutoSegmenter:
         self.model.eval()
         
         num_batch = 0 
-        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss = 0.0,0.0,0.0,0.0,0.0
+        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss = 0.0,0.0,0.0,0.0
         with torch.no_grad():
             for data_in,mask_in in test_loader:
-                data_in = data_in.to(self.device)
-                mask_in = mask_in.to(self.device)
-                seg,norm_seg,data_out = self.model(data_in)
+                data_in = data_in.to(self.cnnenc_dev)
+                mask_in = mask_in.to(self.acc_dev)
+
+                norm_seg,data_out,_ = self.model(data_in)
+                norm_seg = norm_seg.to(self.acc_dev)
+                data_out = [d.to(self.acc_dev) for d in data_out]         
 
                 mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
                 if self.smooth_reg>0:
                     smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
                 else:
-                    smooth_loss = torch.FloatTensor([0]).to(self.device)
-                if self.entr_reg>0:
-                    entr_loss = self.criterion.entr_loss(seg,norm_seg)
-                else:
-                    entr_loss = torch.FloatTensor([0]).to(self.device)
+                    smooth_loss = torch.FloatTensor([0]).to(self.acc_dev)
                 if self.devr_reg>0:
                     devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
                 else:
-                    devr_loss = torch.FloatTensor([0]).to(self.device)
-                tot_loss = mse_loss+smooth_loss+entr_loss+devr_loss
+                    devr_loss = torch.FloatTensor([0]).to(self.acc_dev)
+                tot_loss = mse_loss+smooth_loss+devr_loss
                 
                 batch_mse_loss = mse_loss.item()
                 batch_smooth_loss = smooth_loss.item()
-                batch_entr_loss = entr_loss.item()
                 batch_devr_loss = devr_loss.item()
                 batch_tot_loss = tot_loss.item()
 
                 avg_mse_loss += batch_mse_loss
                 avg_smooth_loss += batch_smooth_loss
-                avg_entr_loss += batch_entr_loss
                 avg_devr_loss += batch_devr_loss
                 avg_tot_loss += batch_tot_loss
                 num_batch += 1
-                print("TEST: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_entr_loss,batch_devr_loss))
+                print("TEST: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_devr_loss))
                     
         avg_tot_loss /= num_batch
         avg_mse_loss /= num_batch
         avg_smooth_loss /= num_batch
-        avg_entr_loss /= num_batch
         avg_devr_loss /= num_batch
-        print("TEST: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, entr {:.2e}, devr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_entr_loss,avg_devr_loss))
+        print("TEST: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss))
         
         self.test_tot_loss = avg_tot_loss
         self.test_mse_loss = avg_mse_loss
         self.test_smooth_loss = avg_smooth_loss
-        self.test_entr_loss = avg_entr_loss
         self.test_devr_loss = avg_devr_loss
         return avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss
 
@@ -270,8 +271,8 @@ class AutoSegmenter:
         with torch.no_grad():
             for idx,(data_in,mask_in) in enumerate(loader):
                 inp.append(data_in.numpy())
-                data_in = data_in.to(self.device)
-                _,segtemp,rectemp = self.model(data_in)
+                data_in = data_in.to(self.cnnenc_dev)
+                segtemp,rectemp,_ = self.model(data_in)
                 s = segtemp.cpu().numpy()[:,:,np.newaxis] #3rd axis is channels (like RGB)
                 r = np.stack([r.cpu().numpy() for r in rectemp],axis=1) #2nd axis is seg label 
                 if masked:
@@ -289,9 +290,8 @@ class AutoSegmenter:
         with torch.no_grad():
             all_segs,all_recs,all_inp,all_mask,all_code,all_files = [],[],[],[],[],[]
             for idx,(data_in,mask,files) in enumerate(loader):
-                data_in = data_in.to(self.device)
-                segs,code = self.model.module.segcode(data_in)      
-                _,segs,recs = self.model(data_in)
+                data_in = data_in.to(self.cnnenc_dev)
+                segs,recs,code = self.model(data_in)
                 inp = np.squeeze(data_in.cpu().numpy(),axis=1)
                 segs = segs.cpu().numpy()
                 recs = np.stack([r.cpu().numpy() for r in recs],axis=1) 
@@ -333,31 +333,6 @@ class AutoSegmenter:
         else:
             return None
 
-#    def classrec(self,dataset,masked=False):
-#        num_workers = min(self.batch,mp.cpu_count())
-#        print("Using {} number of workers to load data for class reconstruction".format(num_workers))
-#        loader = DataLoader(dataset,batch_size=self.batch,shuffle=False,num_workers=num_workers)
-#        self.model.eval()
-#        inp,recs = [],[]
-#        with torch.no_grad():
-#            for idx,(data_in,mask_in) in enumerate(loader):
-#                inp.append(data_in.numpy())
-#                data_in = data_in.to(self.device)
-#                clrecs = []
-#                _,segm,_ = self.model(data_in)
-#                segm_np = segm.cpu().numpy()
-#                mk = mask_in.cpu().numpy()
-#                for i,aenc in enumerate(self.autoencs):
-#                    z = [data_in*segm[:,i:i+1],data_in*(1-segm[:,i:i+1])]
-#                    z = torch.cat(z,dim=1)
-#                    r = aenc(z).cpu().numpy()
-#                    if masked:
-#                        clrecs.append(r*mk)
-#                    else:
-#                        clrecs.append(r)
-#                recs.append(np.concatenate(clrecs,axis=1)*segm_np)
-#        return np.concatenate(recs,axis=0),np.concatenate(inp,axis=0)
-
     def get_checkpoint_path(self, epoch):
         return os.path.join(self.checkpoint_dir, 'model_epoch_{}.pth'.format(epoch))
 
@@ -369,12 +344,10 @@ class AutoSegmenter:
             'train_tot_loss': self.train_tot_loss,
             'train_mse_loss': self.train_mse_loss,
             'train_smooth_loss': self.train_smooth_loss,
-            'train_entr_loss': self.train_entr_loss,
             'train_devr_loss': self.train_devr_loss,
             'test_tot_loss': self.test_tot_loss,
             'test_mse_loss': self.test_mse_loss,
             'test_smooth_loss': self.test_smooth_loss,
-            'test_entr_loss': self.test_entr_loss,
             'test_devr_loss': self.test_devr_loss,
         }
         checkpoint_path = self.get_checkpoint_path(epoch)

@@ -30,10 +30,12 @@ import torch
 #            raise ValueError('Only maxpool and cnn pooling are supported')
 
 class UNet(torch.nn.Module):
-    def __init__(self,num_labels,dim=3,data_chan=1,kernel_size=3,filters=32,blocks=7,batch_norm=False,pad_type='SAME'):
+    def __init__(self,num_labels,dim=3,data_chan=1,kernel_size=3,filters=32,blocks=7,batch_norm=False,pad_type='SAME',enc_dev='cuda',dec_dev='cuda'):
         super(UNet,self).__init__()
         self.kernel_size = kernel_size
         self.blocks = blocks
+        self.enc_dev = enc_dev
+        self.dec_dev = dec_dev
 
         if self.blocks % 2 == 0:
             raise ValueError('Number of UNet blocks must be odd')
@@ -75,15 +77,20 @@ class UNet(torch.nn.Module):
                         self.conv(in_channels=filters,out_channels=num_labels,kernel_size=1,padding=0))
                         #torch.nn.Softmax(dim=1))
 
+        self.encoders = self.encoders.to(self.enc_dev)
+        self.decoders = self.decoders.to(self.dec_dev)
+        self.output = self.output.to(self.dec_dev)
+
     def forward(self,x):
         features = []
         for enc in self.encoders:
             x,z = enc(x)
             features.append(z)
 
-        x = self.decoders[0](x)
+        x = self.decoders[0](x.to(self.dec_dev))
         for i,dec in enumerate(self.decoders[1:]):
             z = features.pop()
+            z = z.to(self.dec_dev)
             if self.pad_type == 'VALID':
                 cr = [(sz-sx)//2 for sz,sx in zip(z.size(),x.size())]
                 #sz-sx is always even since up/down sample factor is 2
@@ -92,6 +99,7 @@ class UNet(torch.nn.Module):
             x = dec(x)
 
         z = features.pop()
+        z = z.to(self.dec_dev)
         if self.pad_type == 'VALID':
             cr = [(sz-sx)//2 for sz,sx in zip(z.size(),x.size())]
             z = z[:,:,cr[2]:-cr[2],cr[3]:-cr[3],cr[4]:-cr[4]] if self.dim==3 else z[:,:,cr[2]:-cr[2],cr[3]:-cr[3]]
@@ -217,4 +225,12 @@ class AutoEnc(torch.nn.Module):
             x = enc(x)
         sz = x.size()
         x = x.view(-1,self.lin_features)
-        return self.linear_enc(x)
+        return self.linear_enc(x),sz
+
+    def decode(self,x,sz):
+        x = self.linear_dec(x)
+        x = x.view(sz)
+        for dec in self.decoders:
+            x = dec(x)
+        return x
+        
