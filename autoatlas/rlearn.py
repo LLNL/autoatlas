@@ -1,58 +1,54 @@
-
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression,Ridge
-from sklearn.svm import SVC,SVR
-from sklearn.neighbors import KNeighborsRegressor,KNeighborsClassifier
-from sklearn.neural_network import MLPClassifier,MLPRegressor
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import balanced_accuracy_score
+import numpy as np
 
-def train_inf(inf_type,opt,train_input,train_output,test_input,train_mask=None,test_mask=None,test_output=None):
-    scaler = StandardScaler().fit(train_input)
-    train_input = scaler.transform(train_input) 
-    test_input = scaler.transform(test_input) 
- 
-    reg_params = [1e-5,1e-4,1e-3,1e-2,1e-1,1,1e2,1e3,1e4,1e5]
-    scorer = 'balanced_accuracy' if inf_type == 'classifier' else 'r2'
-    if opt == 'lin':
-        if inf_type == 'classifier':
-            param_grid = dict(C=reg_params)
-            estor = LogisticRegression(random_state=0,solver='lbfgs',max_iter=10000,multi_class='multinomial')
-        else:
-            param_grid = dict(alpha=reg_params)
-            estor = Ridge(random_state=0,solver='lsqr')
-    elif opt == 'svm':
-        if inf_type == 'classifier':
-            param_grid = dict(C=reg_params)
-            estor = SVC(gamma='scale',random_state=0)
-        else:
-            param_grid = dict(C=reg_params)
-            estor = SVR(gamma='scale')
-    elif opt == 'nneigh':
-        param_grid = dict(n_neighbors=[2,4,8,16,32,64,128])
-        if inf_type == 'classifier':
-            estor = KNeighborsClassifier()
-        else:
-            estor = KNeighborsRegressor()
-    elif opt == 'mlp':
-        param_grid = dict(alpha=reg_params) 
-        if inf_type == 'classifier':    
-            estor = MLPClassifier(hidden_layer_sizes=(4,2),max_iter=10000,solver='lbfgs',random_state=0)
-        else:
-            estor = MLPRegressor(hidden_layer_sizes=(4,2),max_iter=10000,solver='lbfgs',random_state=0)
+class Predictor:
+    def __init__(self,estor):
+        self.scaler = StandardScaler(with_mean=True,with_std=True)
+        self.estor = estor
 
-    gridestor = GridSearchCV(estimator=estor,param_grid=param_grid,n_jobs=-1,refit=True,cv=3,scoring=scorer,iid=False).fit(train_input[train_mask],train_output) 
-    train_pred = gridestor.predict(train_input[train_mask])
-    test_pred = gridestor.predict(test_input[test_mask])
+    def train(self,X,y):
+        assert len(X.shape)==3,'in_data must have three dimensions'
+        X = np.reshape(X,newshape=(X.shape[0],-1),order='C')
+        self.scaler.fit(X)
+        X = self.scaler.transform(X) 
+        self.estor.fit(X,y) 
+
+    def predict(self,X):
+        assert len(X.shape)==3,'in_data must have three dimensions'
+        X = np.reshape(X,newshape=(X.shape[0],-1),order='C')
+        X = self.scaler.transform(X) 
+        return self.estor.predict(X)
+
+    def params(self):
+        return self.estor.best_params_
+
+    def score(self,X,y,metric,**kwargs):
+        y_pred = self.predict(X) 
+        return metric(y_true=y,y_pred=y_pred,**kwargs)
     
-    best_params = gridestor.best_params_
-    print('Task {}: Opt {}: Best params is {}'.format(inf_type,opt,best_params))
-    print(gridestor.score(train_input[train_mask],train_output),gridestor.score(test_input[test_mask],test_output))
- 
-    return train_pred,test_pred,best_params              
-            
-#print(gridestor.score(train_input[train_mask],train_output),gridestor.score(test_input[test_mask],test_output))
-#if inf_type == 'classifier':
-#    print(balanced_accuracy_score(gridestor.predict(train_input[train_mask]),train_output),balanced_accuracy_score(gridestor.predict(test_input[test_mask]),test_output))
-#classifier = GradientBoostingClassifier().fit(train_input[train_mask],train_output)
-#classifier = GradientBoostingRegressor().fit(train_input[train_mask],train_output)
+    def region_score(self,X,y,metric,reg_scorer,n_repeats=1,summary=True,**kwargs):
+        if summary:
+            scores = np.zeros(X.shape[1],dtype=np.float32,order='C')
+            serial = np.arange(0,X.shape[0],1,dtype=int)
+            true_score = self.score(X,y,metric,**kwargs)
+            for i in range(n_repeats):
+                rndidx = np.random.permutation(serial)  
+                for j in range(X.shape[1]):
+                    X_rnd = np.copy(X,order='C')
+                    X_rnd[:,j] = X[rndidx,j] 
+                    rnd_score = self.score(X_rnd,y,metric,**kwargs)
+                    scores[j] += rnd_score
+            for j in range(X.shape[1]):
+                scores[j] = reg_scorer(sc_true=true_score,sc_rnd=scores[j]/n_repeats)
+        else:
+            scores = np.zeros((X.shape[0],X.shape[1]),dtype=np.float32,order='C')
+            for i in range(X.shape[0]):
+                for j in range(X.shape[1]):
+                    X_rnd = np.copy(X,order='C')
+                    X_rnd[:,:j] = X[i:i+1,:j]
+                    X_rnd[:,j+1:] = X[i:i+1,j+1:]
+                    rnd_score = self.score(X_rnd,y[i:i+1],metric,**kwargs)
+                    true_score = self.score(X[i:i+1],y[i:i+1],metric,**kwargs)
+                    scores[i,j] = reg_scorer(sc_true=true_score,sc_rnd=rnd_score)
+        return scores
+

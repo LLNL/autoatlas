@@ -4,11 +4,12 @@
 #SBATCH -p pbatch
 #SBATCH -A ccp
 ##SBATCH --license=lscratche
-#SBATCH -o /p/lustre1/mohan3/Data/TBI/2mm/debug/log.txt
+#SBATCH -o /p/lustre1/mohan3/Data/TBI/2mm/debug/log_process.txt
 
 source ~/.bashrc
 conda activate pytorch36
 
+aaprocess --args_file /p/lustre1/mohan3/Data/TBI/2mm/debug/args.cfg --load_epoch 99 --train_num -1 --test_num -1 --only_features
 aaprocess --args_file /p/lustre1/mohan3/Data/TBI/2mm/debug/args.cfg --load_epoch 99 --train_num 10 --test_num 10
 
 

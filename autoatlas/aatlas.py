@@ -8,6 +8,28 @@ import numpy as np
 import multiprocessing as mp
 import h5py
 
+def partition_encode(seg,mask):
+    neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
+          [1,-1,-1],[1,-1,0],[1,-1,1],
+          [1,0,-1], [1,0,0], [1,0,1],
+          [1,1,-1], [1,1,0], [1,1,1]]
+    nums,dens = [],[]
+    mask = mask[np.newaxis]
+    for (Nz,Ny,Nx) in neighs:
+        H = np.concatenate((seg[:,-Nz:],seg[:,:-Nz]),axis=1)
+        H = np.concatenate((H[:,:,-Ny:],  H[:,:,:-Ny]),   axis=2)
+        H = np.concatenate((H[:,:,:,-Nx:],H[:,:,:,:-Nx]), axis=3)
+        H = seg*H
+        W = np.concatenate((mask[:,-Nz:],  mask[:,:-Nz]), axis=1)
+        W = np.concatenate((W[:,:,-Ny:],  W[:,:,:-Ny]),   axis=2)
+        W = np.concatenate((W[:,:,:,-Nx:],W[:,:,:,:-Nx]), axis=3)
+        W = mask*W
+        nums.append(np.sum(H*W,axis=(1,2,3)))
+        dens.append(np.sum(W,axis=(1,2,3)))
+    area_meas = np.sum(np.stack(nums,axis=-1),axis=-1)/np.sum(np.stack(dens,axis=-1),axis=-1) 
+    vol_meas = np.sum(seg*mask,axis=(1,2,3))/np.sum(mask,axis=(1,2,3))
+    return vol_meas,area_meas
+
 class CustomLoss:
     def __init__(self,dim=3,smooth_reg=0.0,devr_reg=0.0,min_freqs=0.01,npow=2):
         print('CustomLoss: dim={},smooth_reg={},devr_reg={},min_freqs={},npow={}'.format(dim,smooth_reg,devr_reg,min_freqs,npow))

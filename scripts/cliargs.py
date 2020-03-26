@@ -38,7 +38,7 @@ def update_if_false(ARGS,label,cfg_obj,parser):
         else:
             return False
 
-def get_args():
+def get_args(extra_args):
     ARGS_dict = {'ckpt_dir':[str,'Directory for storing run time data.'],
             'train_loaddir':[str,'Directory containing training data.'],
             'test_loaddir':[str,'Directory containing testing/validation data.'],
@@ -64,14 +64,20 @@ def get_args():
             #'mean':[float,'Mean of data for mean subtraction.'],
             'stdev':[float,'Standard deviation of data for normalization.'],
             'size_dim':[int,'Size of each dimension of input volume or image.'],
-            'load_epoch':[int,'Model epoch to load. If negative, does not load model.']
+            'load_epoch':[int,'Model epoch to load. If negative, does not load model.'],
+            'distr':[bool,'If used, distribute model among all GPUs in a node.']
             }
+
+    if extra_args is not None:
+        ARGS_dict.update(extra_args)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--args_file',type=str,required=True,help='File to read and store run-time arguments')
-    parser.add_argument('--distr',action='store_true',help='If used, distribute model among all GPUs in a node')
     for key,(dtype,h) in ARGS_dict.items():
-        parser.add_argument('--{}'.format(key),default=None,type=dtype,help=h)
+        if dtype is not bool:
+            parser.add_argument('--{}'.format(key),default=None,type=dtype,help=h)
+        else:
+            parser.add_argument('--{}'.format(key),action='store_true',help=h)
     ARGS_inp = vars(parser.parse_args())
 
     config = cp.ConfigParser()

@@ -1,10 +1,10 @@
 from autoatlas import AutoAtlas
 from autoatlas.data import NibData
 import os
-from .args import get_args,write_args
+from .cliargs import get_args,write_args
 
 def main():
-    ARGS = get_args()
+    ARGS = get_args(None)
 
     #Datasets
     train_files = [os.path.join(ARGS['train_loaddir'],f) for f in os.listdir(ARGS['train_loaddir']) if ARGS['filter_file'] in f]
