@@ -1,4 +1,5 @@
 import torch
+import collections
 
 #class DwnPool(torch.nn.Module):
 #    def __init__(mode,stride=2,filters=None):
@@ -30,7 +31,7 @@ import torch
 #            raise ValueError('Only maxpool and cnn pooling are supported')
 
 class UNet(torch.nn.Module):
-    def __init__(self,num_labels,dim=3,data_chan=1,kernel_size=3,filters=32,blocks=7,batch_norm=False,pad_type='SAME',enc_dev='cuda',dec_dev='cuda'):
+    def __init__(self,num_labels,dim=3,data_chan=1,kernel_size=3,filters=32,blocks=7,layers_block=2,batch_norm=False,pad_type='SAME',enc_dev='cuda',dec_dev='cuda'):
         super(UNet,self).__init__()
         self.kernel_size = kernel_size
         self.blocks = blocks
@@ -55,27 +56,26 @@ class UNet(torch.nn.Module):
         else:
             raise ValueError("ERROR: dim for UNet must be either 2 or 3")
         
-        self.encoders = torch.nn.ModuleList([UNetEncoder(dim=dim,in_filters=data_chan,out_filters=filters*2,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
+        self.encoders = torch.nn.ModuleList([UNetEncoder(dim=dim,in_filters=data_chan,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)])
         for _ in range(blocks//2-1):
-            filters *= 2
-            enc = UNetEncoder(dim=dim,in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm) 
+            enc = UNetEncoder(dim=dim,in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm) 
             self.encoders.append(enc)
+            filters *= 2
   
-        filters *= 2
-        self.decoders = torch.nn.ModuleList([UNetDecoder(dim=dim,in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)])
+        self.decoders = torch.nn.ModuleList([UNetDecoder(dim=dim,in_filters=filters,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)])
         for _ in range(blocks//2-1):
-            dec = UNetDecoder(dim=dim,in_filters=filters+filters*2,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,batch_norm=batch_norm)
+            dec = UNetDecoder(dim=dim,in_filters=filters*2,out_filters=filters//2,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)
             self.decoders.append(dec)
             filters = filters//2
             #Division using // ensures return value is integer
 
-        self.output = torch.nn.Sequential(
-                        self.conv(in_channels=filters+2*filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
-                        torch.nn.ReLU(inplace=True),
-                        self.conv(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
-                        torch.nn.ReLU(inplace=True),
-                        self.conv(in_channels=filters,out_channels=num_labels,kernel_size=1,padding=0))
-                        #torch.nn.Softmax(dim=1))
+        seq_lays = [self.conv(in_channels=filters*2,out_channels=filters,kernel_size=kernel_size,padding=pad_width)]
+        seq_lays.append(torch.nn.ReLU(inplace=True)) 
+        for i in range(layers_block-1):
+            seq_lays.append(self.conv(in_channels=filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width)) 
+            seq_lays.append(torch.nn.ReLU(inplace=True)) 
+        seq_lays.append(self.conv(in_channels=filters,out_channels=num_labels,kernel_size=1,padding=0)) 
+        self.output = torch.nn.Sequential(*seq_lays)
 
         self.encoders = self.encoders.to(self.enc_dev)
         self.decoders = self.decoders.to(self.dec_dev)
@@ -107,7 +107,7 @@ class UNet(torch.nn.Module):
         return self.output(x)
 
 class UNetEncoder(torch.nn.Module):
-    def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,batch_norm=False):
+    def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,layers_block,batch_norm=False):
         super(UNetEncoder,self).__init__()
         
         if dim == 2:
@@ -118,19 +118,20 @@ class UNetEncoder(torch.nn.Module):
             self.pool = torch.nn.MaxPool3d(2,padding=0)
         else:
             raise ValueError("ERROR: dim for UNet must be either 2 or 3")
-        
-        self.model = torch.nn.Sequential(
-                        self.conv(in_channels=in_filters,out_channels=out_filters//2,kernel_size=kernel_size,padding=pad_width),
-                        torch.nn.ReLU(inplace=True),
-                        self.conv(in_channels=out_filters//2,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
-                        torch.nn.ReLU(inplace=True))
+       
+        seq_lays = []
+        for i in range(layers_block):
+            in_channels = in_filters if i==0 else out_filters
+            seq_lays.append(self.conv(in_channels=in_channels,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width))
+            seq_lays.append(torch.nn.ReLU(inplace=True))
+        self.model = torch.nn.Sequential(*seq_lays)
 
     def forward(self,x):
         x = self.model(x)
         return self.pool(x),x
 
 class UNetDecoder(torch.nn.Module):
-    def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,batch_norm=False):
+    def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,layers_block,batch_norm=False):
         super(UNetDecoder,self).__init__()
        
         if dim == 2:
@@ -141,13 +142,14 @@ class UNetDecoder(torch.nn.Module):
             self.conv_tran = torch.nn.ConvTranspose3d
         else:
             raise ValueError("ERROR: dim for Decoder must be either 2 or 3")
- 
-        self.model = torch.nn.Sequential(
-                            self.conv(in_channels=in_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
-                            torch.nn.ReLU(inplace=True), 
-                            self.conv(in_channels=out_filters,out_channels=out_filters,kernel_size=kernel_size,padding=pad_width),
-                            torch.nn.ReLU(inplace=True), 
-                            self.conv_tran(in_channels=out_filters,out_channels=out_filters,kernel_size=2,padding=0,stride=2))
+
+        seq_lays = []
+        for i in range(layers_block):
+            in_channels = in_filters if i==0 else 2*out_filters
+            seq_lays.append(self.conv(in_channels=in_channels,out_channels=2*out_filters,kernel_size=kernel_size,padding=pad_width))
+            seq_lays.append(torch.nn.ReLU(inplace=True))
+        seq_lays.append(self.conv_tran(in_channels=2*out_filters,out_channels=out_filters,kernel_size=2,padding=0,stride=2))
+        self.model = torch.nn.Sequential(*seq_lays)
 
     def forward(self,x):
         return self.model(x)

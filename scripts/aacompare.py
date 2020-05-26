@@ -5,16 +5,10 @@ from autoatlas.analyze import overlap_coeff
 from autoatlas.utils import adjust_dims
 import os
 import csv
+from .cliargs import HELP_MSG_DICT as HELP
 
-def save_nifti(filen,data,affine,header):
-    header.set_data_dtype(data.dtype) 
-    header.set_slope_inter(None,None)
-    dptr = nib.Nifti1Image(data,affine,header)
-    dptr.to_filename(filen)
-
-def write_csv(savedir,filen,data):
+def write_csv(filen,data):
     assert data.ndim==2
-    filen = os.path.join(savedir,filen)
     with open(filen,mode='w') as csv_file:
         csv_writer = csv.writer(csv_file,delimiter=',')
         csv_writer.writerow(['']+['FA{}'.format(k) for k in range(data.shape[1])])
@@ -22,38 +16,51 @@ def write_csv(savedir,filen,data):
             temp = ['AA{}'.format(i)]+['{:.6e}'.format(k) for k in data[i].tolist()]
             csv_writer.writerow(temp)
 
-def comp_vol(savedir,atlasdir,dims):
-    autoa_files = [f for f in os.listdir(savedir) if '_T1w_brain_2_aaparts' in f] 
-    if savedir is not None:
-        for f in autoa_files:
-            ID = os.path.split(f)[-1].split('_')[0]
-            autoa_ptr = nib.load(os.path.join(savedir,f))
-            autoa_vol = autoa_ptr.get_fdata().astype(int)
-            assert autoa_vol.shape==tuple(dims)
+def comp_vol(smpl_list,segvol_filen,mask_filen,atlas_filen,olap_nnone_filen,olap_nmin_filen,olap_nsum_filen):
+    samples = []
+    with open(smpl_list,'r') as csv_file:
+        reader = csv.reader(csv_file)
+        for row in reader:
+            assert len(row)==1
+            samples.append(row[0])
 
-            mask_ptr = nib.load(os.path.join(savedir,'{}_T1w_brain_2_aamask.nii.gz'.format(ID)))
-            mask_vol = mask_ptr.get_fdata().astype(bool)
-            assert mask_vol.shape==tuple(dims)
+    for ID in samples:
+        print(ID)
+        autoa_ptr = nib.load(segvol_filen.format(ID))
+        autoa_vol = autoa_ptr.get_fdata().astype(int)
+        
+        mask_ptr = nib.load(mask_filen.format(ID))
+        mask_vol = mask_ptr.get_fdata().astype(bool)
+        assert autoa_vol.shape==mask_vol.shape
+        fixa_ptr = nib.load(atlas_filen.format(ID))
+        fixa_vol = fixa_ptr.get_fdata().astype(int)
+        assert fixa_vol.shape==autoa_vol.shape
 
-            fixa_file = os.path.join(atlasdir,'{}-tissue_2mm.nii.gz'.format(ID))
-            fixa_ptr = nib.load(fixa_file)
-            fixa_vol = fixa_ptr.get_fdata().astype(int)
-            fixa_vol = adjust_dims(fixa_vol,dims)
-            save_nifti(os.path.join(savedir,'{}-tissue_2mm.nii.gz'.format(ID)),fixa_vol,autoa_ptr.get_affine(),autoa_ptr.get_header())            
-
-            overlap_none = overlap_coeff(autoa_vol,fixa_vol,mask_vol,norm_type=None)
-            overlap_min = overlap_coeff(autoa_vol,fixa_vol,mask_vol,norm_type='min')
-            overlap_sum = overlap_coeff(autoa_vol,fixa_vol,mask_vol,norm_type='sum')
-            
-            write_csv(savedir,'{}_overlap.csv'.format(ID),np.squeeze(overlap_none))
-            write_csv(savedir,'{}_overlap_minnorm.csv'.format(ID),np.squeeze(overlap_min))
-            write_csv(savedir,'{}_overlap_sumnorm.csv'.format(ID),np.squeeze(overlap_sum))
+        overlap_none = overlap_coeff(autoa_vol,fixa_vol,mask_vol,norm_type=None)
+        overlap_min = overlap_coeff(autoa_vol,fixa_vol,mask_vol,norm_type='min')
+        overlap_sum = overlap_coeff(autoa_vol,fixa_vol,mask_vol,norm_type='sum')
+        
+        write_csv(olap_nnone_filen.format(ID),np.squeeze(overlap_none))
+        write_csv(olap_nmin_filen.format(ID),np.squeeze(overlap_min))
+        write_csv(olap_nsum_filen.format(ID),np.squeeze(overlap_sum))
             
 def main():
-    extra_args = {'atlas_dir':[str,'Directory where atlas volumes are stored. Voxel values of the atlas must be of integer type.']}
-    
+    extra_args = {'train_list':[str,'File containing list of training samples.'],
+                  'train_segvol':[str,'File containing segmentation volume.'],
+                  'train_mask':[str,'Filepath of mask for training dataset.'],
+                  'train_atlas':[str,'Fixed atlas file.'],
+                  'train_olap_nnone':[str,'Overlap with no normalization.'],
+                  'train_olap_nmin':[str,'Overlap normalized by the minimum number of samples.'],
+                  'train_olap_nsum':[str,'Overlap normalized by the sum of samples.'],
+                  'test_list':[str,'File containing list of testing samples.'],
+                  'test_segvol':[str,'File containing segmentation volume.'],
+                  'test_mask':[str,'Filepath of mask for testing dataset.'],
+                  'test_atlas':[str,'Fixed atlas file.'],
+                  'test_olap_nnone':[str,'Overlap with no normalization.'],
+                  'test_olap_nmin':[str,'Overlap normalized by the minimum number of samples.'],
+                  'test_olap_nsum':[str,'Overlap normalized by the sum of samples.']} 
+
     ARGS = get_args(extra_args)
-    dims = [ARGS['size_dim'] for _ in range(ARGS['space_dim'])]
-    comp_vol(ARGS['train_savedir'],ARGS['atlas_dir'],dims)
-    comp_vol(ARGS['test_savedir'],ARGS['atlas_dir'],dims)
+    comp_vol(ARGS['train_list'],ARGS['train_segvol'],ARGS['train_mask'],ARGS['train_atlas'],ARGS['train_olap_nnone'],ARGS['train_olap_nmin'],ARGS['train_olap_nsum'])
+    comp_vol(ARGS['test_list'],ARGS['test_segvol'],ARGS['test_mask'],ARGS['test_atlas'],ARGS['test_olap_nnone'],ARGS['test_olap_nmin'],ARGS['test_olap_nsum'])
                         

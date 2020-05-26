@@ -22,7 +22,7 @@ setup(name='autoatlas',
       ],
       entry_points = {'console_scripts': [ 
                 'aatrain = scripts.aatrain:main',
-                'aaprocess = scripts.aaprocess:main',
+                'aainfer = scripts.aainfer:main',
                 'aacompare = scripts.aacompare:main',
                 'aarlearn = scripts.aarlearn:main' 
                 ]}

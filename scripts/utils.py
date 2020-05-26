@@ -1,27 +1,23 @@
-import configparser as cp
+from autoatlas.data import NibData
+import csv
+import os
 
-def get_config(filename):
-    config = cp.ConfigParser()
-    config.read(filename)
-    
-    #Parameters
-    num_labels = config.getint('command_line_arguments','num_labels')
-    data_chan = config.getint('command_line_arguments','data_chan')
-    space_dim = config.getint('command_line_arguments','space_dim')
-    unet_chan = config.getint('command_line_arguments','unet_chan')
-    unet_blocks = config.getint('command_line_arguments','unet_blocks')
-    aenc_chan = config.getint('command_line_arguments','aenc_chan')
-    aenc_depth = config.getint('command_line_arguments','aenc_depth')
-    num_epochs = config.getint('command_line_arguments','epochs')
-    batch = config.getint('command_line_arguments','batch')
-    re_pow = config.getint('command_line_arguments','re_pow')
-    lr = config.getfloat('command_line_arguments','lr')
-    smooth_reg = config.getfloat('command_line_arguments','smooth_reg')
-    devr_reg = config.getfloat('command_line_arguments','devr_reg')
-    min_freqs = config.getfloat('command_line_arguments','min_freqs')
-    train_folder = config.get('command_line_arguments','train_folder')
-    test_folder = config.get('command_line_arguments','test_folder')
-    stdev = config.getfloat('command_line_arguments','stdev')
-    size_dim = config.getint('command_line_arguments','size_dim')
+def get_samples(smpl_list):
+    samples = []
+    with open(smpl_list,'r') as csv_file:
+        reader = csv.reader(csv_file)
+        for row in reader:
+            assert len(row)==1
+            samples.append(row[0])
+    return samples
 
-    return num_labels,data_chan,space_dim,unet_chan,unet_blocks,aenc_chan,aenc_depth,num_epochs,batch,re_pow,lr,smooth_reg,devr_reg,min_freqs,train_folder,test_folder,stdev,size_dim 
+def get_dataset(samples,data_filename,mask_filename):
+    #smpl_dirs = [os.path.join(data_dir,f) for f in smpl_dirs][:10] #FIX. ONLY FOR DEBUG
+    data_files,mask_files = [],[]
+    for smpl in samples:
+        data_files.append(data_filename.format(smpl))
+    for smpl in samples:
+        mask_files.append(mask_filename.format(smpl))
+    return NibData(data_files,mask_files),data_files,mask_files 
+#TEMPORARY: SHOULD INCLUDE CODE TO CHECK SAME METADATA FOR MASK AND DATA FILES IN DATA READER
+
