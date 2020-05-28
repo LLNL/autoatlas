@@ -80,6 +80,7 @@ def main():
             autoseg.test(test_data)
         autoseg.ckpt(epoch,ARGS['ckpt'])
         ARGS['load_epoch'] = epoch
+        write_args(ARGS,ARGS['cli_save'])
 
 #End of function main()
 

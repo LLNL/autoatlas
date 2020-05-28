@@ -24,6 +24,7 @@ setup(name='autoatlas',
                 'aatrain = scripts.aatrain:main',
                 'aainfer = scripts.aainfer:main',
                 'aacompare = scripts.aacompare:main',
-                'aarlearn = scripts.aarlearn:main' 
+                'aarlearn = scripts.aarlearn:main',
+                'drtrain = scripts.drtrain:main' 
                 ]}
       )

@@ -236,3 +236,47 @@ class AutoEnc(torch.nn.Module):
             x = dec(x)
         return x
         
+class EncPred(torch.nn.Module):
+    def __init__(self,sizes,data_chan,kernel_size,filters,depth,pool,out_features,batch_norm=False,pool_type='conv',pad_type='SAME'):
+        super(EncPred,self).__init__()
+        self.sizes = sizes
+        dim = len(self.sizes)
+
+        if pad_type == 'VALID':
+            pad_width = 0
+        elif pad_type == 'SAME':
+            pad_width = kernel_size//2
+        else:
+            raise ValueError("ERROR: pad_type must be either VALID or SAME")
+
+        if kernel_size%2==0:
+            raise ValueError("ERROR: Kernel size must be odd")
+
+        if dim == 2:
+            self.conv = torch.nn.Conv2d
+            self.conv_tran = torch.nn.ConvTranspose2d
+        elif dim == 3:
+            self.conv = torch.nn.Conv3d
+            self.conv_tran = torch.nn.ConvTranspose3d
+
+        self.encoders = torch.nn.ModuleList([])
+        for i in range(depth):
+            in_filters = data_chan if i==0 else filters
+            enc = torch.nn.Sequential(
+                self.conv(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool),
+                torch.nn.ReLU(inplace=True))
+            self.encoders.append(enc)
+
+        if dim == 2:
+            self.lin_features = int(filters*sizes[0]*sizes[1]/(pool**(2*depth)))
+        elif dim == 3:
+            self.lin_features = int(filters*sizes[0]*sizes[1]*sizes[2]/(pool**(3*depth)))
+ 
+        self.linear_enc = torch.nn.Linear(in_features=self.lin_features,out_features=out_features)   
+        
+    def forward(self,x):
+        for enc in self.encoders:
+            x = enc(x)
+        x = x.view(-1,self.lin_features)
+        return self.linear_enc(x)
+

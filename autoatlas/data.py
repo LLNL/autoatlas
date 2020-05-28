@@ -8,14 +8,16 @@ import torch
 from torch.utils.data import Dataset
 
 class NibData(Dataset):
-    def __init__(self,data_files,mask_files):
-        if not isinstance(data_files,list):
-            data_files = [data_files]
-        if not isinstance(mask_files,list):
-            mask_files = [mask_files]
+    def __init__(self,data_files,mask_files,targets=None,task='regression',labels=None):
         assert len(mask_files)==len(data_files)
         self.data_files = data_files
         self.mask_files = mask_files
+        self.targets = targets
+        if task != 'regression' and labels is not None:
+            temp = np.zeros(targets.size,dtype=float)         
+            for i,lab in enumerate(labels):
+                temp[self.targets==lab] = i
+            self.targets = temp
 
     def __len__(self):
         return len(self.data_files)
@@ -31,6 +33,11 @@ class NibData(Dataset):
  
         data_vol = torch.unsqueeze(torch.from_numpy(data_vol),dim=0)
         mask_vol = torch.unsqueeze(torch.from_numpy(mask_vol),dim=0)
-        return data_vol.float(),mask_vol.float(),data_filen,mask_filen
+        target = torch.FloatTensor([self.targets[idx]])
+        if self.targets is None:
+            return data_vol.float(),mask_vol.float(),data_filen,mask_filen
+        else:
+            return data_vol.float(),mask_vol.float(),target,data_filen,mask_filen
+            
 #TEMPORARY: SHOULD INCLUDE CODE TO CHECK SAME METADATA FOR MASK AND DATA FILES IN DATA READER
 

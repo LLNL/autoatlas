@@ -11,13 +11,13 @@ def get_samples(smpl_list):
             samples.append(row[0])
     return samples
 
-def get_dataset(samples,data_filename,mask_filename):
+def get_dataset(samples,data_filename,mask_filename,targets=None,task=None,labels=None):
     #smpl_dirs = [os.path.join(data_dir,f) for f in smpl_dirs][:10] #FIX. ONLY FOR DEBUG
     data_files,mask_files = [],[]
     for smpl in samples:
         data_files.append(data_filename.format(smpl))
     for smpl in samples:
         mask_files.append(mask_filename.format(smpl))
-    return NibData(data_files,mask_files),data_files,mask_files 
+    return NibData(data_files,mask_files,targets=targets,task=task,labels=labels),data_files,mask_files 
 #TEMPORARY: SHOULD INCLUDE CODE TO CHECK SAME METADATA FOR MASK AND DATA FILES IN DATA READER
 

@@ -1,145 +1,19 @@
 import torch
 import os
-from autoatlas.cnn import UNet,AutoEnc
-from autoatlas.models import SegmRecon
+from autoatlas.cnn import EncPred
 from torch.utils.data import DataLoader
 import progressbar
 import numpy as np
 import multiprocessing as mp
 import h5py
 
-def partition_encode(seg,mask):
-    neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
-          [1,-1,-1],[1,-1,0],[1,-1,1],
-          [1,0,-1], [1,0,0], [1,0,1],
-          [1,1,-1], [1,1,0], [1,1,1]]
-    nums,dens = [],[]
-    mask = mask[np.newaxis]
-    for (Nz,Ny,Nx) in neighs:
-        H = np.concatenate((seg[:,-Nz:],seg[:,:-Nz]),axis=1)
-        H = np.concatenate((H[:,:,-Ny:],  H[:,:,:-Ny]),   axis=2)
-        H = np.concatenate((H[:,:,:,-Nx:],H[:,:,:,:-Nx]), axis=3)
-        H = seg*H
-        W = np.concatenate((mask[:,-Nz:],  mask[:,:-Nz]), axis=1)
-        W = np.concatenate((W[:,:,-Ny:],  W[:,:,:-Ny]),   axis=2)
-        W = np.concatenate((W[:,:,:,-Nx:],W[:,:,:,:-Nx]), axis=3)
-        W = mask*W
-        nums.append(np.sum(H*W,axis=(1,2,3)))
-        dens.append(np.sum(W,axis=(1,2,3)))
-    area_meas = np.sum(np.stack(nums,axis=-1),axis=-1)/np.sum(np.stack(dens,axis=-1),axis=-1) 
-    vol_meas = np.sum(seg*mask,axis=(1,2,3))/np.sum(mask,axis=(1,2,3))
-    return vol_meas,area_meas
-
-class CustomLoss:
-    def __init__(self,rel_reg,smooth_reg,devr_reg,roi_reg,min_freqs,roi_rad,npow,sizes,device):
-        print('CustomLoss: rel_reg={},smooth_reg={},devr_reg={},roi_reg={},min_freqs={},roi_rad={},npow={},sizes={}'.format(rel_reg,smooth_reg,devr_reg,roi_reg,min_freqs,roi_rad,npow,sizes))
-        dim = len(sizes)
-        self.rel_reg = rel_reg
-        self.smooth_reg = smooth_reg
-        self.devr_reg = devr_reg
-        self.roi_reg = roi_reg
-        self.min_freqs = min_freqs
-        self.roi_rad = roi_rad   
-        self.npow = npow
-        self.dim = dim
-        self.dimlist = [2+i for i in range(self.dim)]
-        if dim==3:
-            self.neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
-                       [1,-1,-1],[1,-1,0],[1,-1,1],
-                       [1,0,-1], [1,0,0], [1,0,1],
-                       [1,1,-1], [1,1,0], [1,1,1]]
-        elif dim==2:
-            self.neighs = [[0,1,np.nan],[1,-1,np.nan],[1,0,np.nan],[1,1,np.nan]]
-        else:
-            raise ValueError('dim must be either 2 or 3')
-        self.softmax = torch.nn.Softmax(dim=1)
-        #self.logsoftmax = torch.nn.LogSoftmax(dim=1)
-        self.eps = 1e-10
-        
-        z = torch.arange(0,sizes[0],1)
-        y = torch.arange(0,sizes[1],1)
-        if self.dim == 3:
-            x = torch.arange(0,sizes[2],1)
-
-        if self.dim == 3:
-            grid_z,grid_y,grid_x = torch.meshgrid(z,y,x)
-        else:
-            grid_z,grid_y = torch.meshgrid(z,y)
-           
-        self.zero_tensor = torch.FloatTensor([0.0]).to(device) 
-        self.grid_z = torch.unsqueeze(torch.unsqueeze(grid_z,dim=0),dim=0).type(torch.FloatTensor).to(device)
-        self.grid_y = torch.unsqueeze(torch.unsqueeze(grid_y,dim=0),dim=0).type(torch.FloatTensor).to(device)
-        if self.dim == 3:
-            self.grid_x = torch.unsqueeze(torch.unsqueeze(grid_x,dim=0),dim=0).type(torch.FloatTensor).to(device)
-
-    def mse_loss(self,gtruth,recs,seg,mask):
-        mse_losses = []
-        den = torch.sum(mask,dim=self.dimlist)
-        for i,r in enumerate(recs):
-            num = torch.mean(torch.abs(gtruth-r)**self.npow,dim=1,keepdim=True)
-            num = torch.sum(num*seg[:,i:i+1]*mask,dim=self.dimlist)
-            mse_losses.append(num/den)
-        #return torch.mean(torch.stack(mse_losses))
-        return self.rel_reg*torch.mean(torch.sum(torch.stack(mse_losses,dim=-1),dim=-1))
-
-    def smooth_loss(self,seg,mask):
-        nums,dens = [],[]
-        for (Nz,Ny,Nx) in self.neighs:
-            H = torch.cat((seg[:,:,-Nz:],  seg[:,:,:-Nz]),  dim=2)
-            H = torch.cat((H[:,:,:,-Ny:],  H[:,:,:,:-Ny]),  dim=3)
-            if self.dim==3:
-                H = torch.cat((H[:,:,:,:,-Nx:],H[:,:,:,:,:-Nx]),dim=4)
-            H = seg*H
-            W = torch.cat((mask[:,:,-Nz:],  mask[:,:,:-Nz]),  dim=2)
-            W = torch.cat((W[:,:,:,-Ny:],  W[:,:,:,:-Ny]),  dim=3)
-            if self.dim==3:
-                W = torch.cat((W[:,:,:,:,-Nx:],W[:,:,:,:,:-Nx]),dim=4)
-            W = mask*W
-            assert torch.max(W)==1.0
-            assert torch.min(W)==0.0
-            nums.append(torch.sum(H*W,dim=self.dimlist))
-            dens.append(torch.sum(W,dim=self.dimlist))
-        smooth_loss = torch.sum(torch.stack(nums,dim=-1),dim=-1)/torch.sum(torch.stack(dens,dim=-1),dim=-1)   
-        smooth_loss = -torch.log(torch.sum(smooth_loss,dim=1))
-        return self.smooth_reg*torch.mean(smooth_loss)
-
-    def devr_loss(self,seg,mask):
-        clp = torch.sum(seg*mask,dim=self.dimlist)/torch.sum(mask,dim=self.dimlist)
-        clp = -torch.log((clp+self.eps*self.min_freqs)/self.min_freqs)
-        clp = torch.clamp(clp,min=0)
-        return self.devr_reg*torch.mean(clp)
-
-    def roi_loss(self,seg,mask):
-        seg = seg*mask
-        seg = seg/torch.sum(seg,dim=self.dimlist,keepdim=True)
-        centr_z = torch.sum(seg*self.grid_z,dim=self.dimlist,keepdim=True)  
-        centr_y = torch.sum(seg*self.grid_y,dim=self.dimlist,keepdim=True)  
-        if self.dim == 3:
-            centr_x = torch.sum(seg*self.grid_x,dim=self.dimlist,keepdim=True)  
-    
-        dist = (self.grid_z-centr_z)*(self.grid_z-centr_z)
-        dist = dist + (self.grid_y-centr_y)*(self.grid_y-centr_y)
-        if self.dim == 3:
-            dist = dist + (self.grid_x-centr_x)*(self.grid_x-centr_x)
-        dist = torch.sqrt(dist)       
- 
-        lhood = torch.where(dist<=self.roi_rad,seg,self.zero_tensor)  
-        return -self.roi_reg*torch.mean(torch.log(torch.sum(lhood,dim=self.dimlist))) 
-
-#    def entr_loss(self,seg,mask)
-#        if self.dim == 3:
-#            seg_den = torch.sum(seg,dim=(2,3,4),keepdim=True)
-#        else:
-#            seg_den = torch.sum(seg,dim=(2,3),keepdim=True)
-#
-#        seg_norm = seg/seg_den 
-         
-    
-class AutoAtlas:
-    def __init__(self,num_labels=None,sizes=None,data_chan=None,rel_reg=None,smooth_reg=None,devr_reg=None,roi_reg=None,min_freqs=None,roi_rad=None,batch=None,lr=None,unet_chan=None,unet_blocks=None,aenc_chan=None,aenc_depth=None,re_pow=None,distr=None,device=None,load_ckpt_epoch=None,ckpt_file='model_epoch_{}.pth'):
+class DirPredNN:
+    def __init__(self,sizes=None,data_chan=None,batch=None,lr=None,cnn_chan=None,cnn_depth=None,device=None,load_ckpt_epoch=None,ckpt_file=None,task=None,num_labels=None):
         self.ARGS = {}
         self.ARGS['ckpt_file'] = ckpt_file
         self.ARGS['load_ckpt_epoch'] = load_ckpt_epoch
+        self.ARGS['task'] = task
+        self.ARGS['num_labels'] = num_labels
 
         ckpt_path = None
         if load_ckpt_epoch is not None:
@@ -153,75 +27,33 @@ class AutoAtlas:
                     if key not in self.ARGS.keys():
                         self.ARGS[key] = ckpt['ARGS'][key]
                 self.start_epoch = ckpt['epoch']
-                self.train_tot_loss = ckpt['train_tot_loss']
-                self.train_mse_loss = ckpt['train_mse_loss']
-                self.train_smooth_loss = ckpt['train_smooth_loss']
-                self.train_devr_loss = ckpt['train_devr_loss']
-                self.train_roi_loss = ckpt['train_roi_loss']
-                self.test_tot_loss = ckpt['test_tot_loss']
-                self.test_mse_loss = ckpt['test_mse_loss']
-                self.test_smooth_loss = ckpt['test_smooth_loss']
-                self.test_devr_loss = ckpt['test_devr_loss']
-                self.test_roi_loss = ckpt['test_roi_loss']
+                self.train_loss = ckpt['train_loss']
+                self.test_loss = ckpt['test_loss']
                 print('Loaded model from epoch: {}'.format(self.start_epoch),flush=True)
-                print('Model stats: train loss={:.3e}, test loss={:.3e}'.format(self.train_tot_loss,self.test_tot_loss),flush=True)
+                print('Model stats: train loss={:.3e}, test loss={:.3e}'.format(self.train_loss,self.test_loss),flush=True)
         else:
             self.start_epoch = 0
-            self.train_tot_loss = float('inf')
-            self.train_mse_loss = float('inf')
-            self.train_smooth_loss = float('inf')
-            self.train_devr_loss = float('inf')
-            self.test_tot_loss = float('inf')
-            self.test_mse_loss = float('inf')
-            self.test_smooth_loss = float('inf')
-            self.test_devr_loss = float('inf')
-            self.ARGS.update({'num_labels':num_labels,'sizes':sizes,'data_chan':data_chan,
-                        'rel_reg':rel_reg,'smooth_reg':smooth_reg,'devr_reg':devr_reg,'roi_reg':roi_reg,
-                        'min_freqs':min_freqs,'roi_rad':roi_rad,
-                        'batch':batch,'lr':lr,'unet_chan':unet_chan,'unet_blocks':unet_blocks,
-                        'aenc_chan':aenc_chan,'aenc_depth':aenc_depth,'re_pow':re_pow,
-                        'distr':distr,'device':device})
+            self.train_loss = float('inf')
+            self.test_loss = float('inf')
+            self.ARGS.update({'sizes':sizes,'data_chan':data_chan,
+                        'batch':batch,'lr':lr,'cnn_chan':cnn_chan,'cnn_depth':cnn_depth,'device':device})
         
         dim = len(self.ARGS['sizes'])
-        self.dev_list = None
-        device = self.ARGS['device']
-        if self.ARGS['distr']==True and device=='cuda':
-            self.acc_dev = '{}:0'.format(device)
-            dev_count = torch.cuda.device_count()
-            assert dev_count>=1 and dev_count<=4
-            self.cnnenc_dev,self.cnndec_dev = '{}:0'.format(device),'{}:0'.format(device)
-            if dev_count>=3:
-                self.cnndec_dev = '{}:1'.format(device)
-            self.aenc_devs = [] 
-            for i in range(self.ARGS['num_labels']):
-                if dev_count <= 3:
-                    devid = dev_count-1
-                else:
-                    devid = 2 if i%2==0 else 3
-                self.aenc_devs.append('{}:{}'.format(device,devid))
-        elif self.ARGS['distr']==False and device=='cuda':
-            self.acc_dev = 'cuda'
-            self.cnnenc_dev,self.cnndec_dev = 'cuda','cuda'
-            self.aenc_devs = ['cuda' for i in range(self.ARGS['num_labels'])] 
-        else:
-            raise ValueError('Combination of distr={} and device={} is not supported'.format(self.ARGS['distr'],device))
-        assert self.acc_dev==self.cnnenc_dev
+        self.dev = self.ARGS['device']
 
-        #print("Devices: Accumulator {}, CNN encoder {}, CNN decoder {}, autoencoders {}".format(self.acc_dev,self.cnnenc_dev,self.cnndec_dev,self.aenc_devs))
-        self.cnn = UNet(self.ARGS['num_labels'],dim=dim,data_chan=self.ARGS['data_chan'],kernel_size=3,filters=self.ARGS['unet_chan'],blocks=self.ARGS['unet_blocks'],batch_norm=False,pad_type='SAME',enc_dev=self.cnnenc_dev,dec_dev=self.cnndec_dev)
-   
-        self.autoencs = torch.nn.ModuleList([])
-        for i in range(self.ARGS['num_labels']):
-            self.autoencs.append(AutoEnc(self.ARGS['sizes'],data_chan=self.ARGS['data_chan'],kernel_size=7,filters=self.ARGS['aenc_chan'],depth=self.ARGS['aenc_depth'],pool=2,batch_norm=False,pad_type='SAME').to(self.aenc_devs[i])) 
+        out_features = 1 if task == 'regression' else num_labels
+        self.model = EncPred(self.ARGS['sizes'],data_chan=self.ARGS['data_chan'],kernel_size=7,filters=self.ARGS['cnn_chan'],depth=self.ARGS['cnn_depth'],pool=2,out_features=out_features,batch_norm=False,pad_type='SAME').to(self.dev) 
         
-        self.model = SegmRecon(self.cnn,self.autoencs,self.aenc_devs)
-        if self.ARGS['distr']==False and device == 'cuda':
-            print('Using torch.nn.DataParallel for parallel processing')
-            devids = list(range(torch.cuda.device_count()))
-            self.model = torch.nn.DataParallel(self.model,device_ids=devids)
-            torch.backends.cudnn.benchmark = True
-       
-        self.criterion = CustomLoss(rel_reg=self.ARGS['rel_reg'],smooth_reg=self.ARGS['smooth_reg'],devr_reg=self.ARGS['devr_reg'],roi_reg=self.ARGS['roi_reg'],min_freqs=self.ARGS['min_freqs'],roi_rad=self.ARGS['roi_rad'],npow=self.ARGS['re_pow'],sizes=self.ARGS['sizes'],device=device)
+        print('Using torch.nn.DataParallel for parallel processing')
+        devids = list(range(torch.cuda.device_count()))
+        self.model = torch.nn.DataParallel(self.model,device_ids=devids)
+        torch.backends.cudnn.benchmark = True
+      
+        if task == 'regression':
+            self.criterion = torch.nn.MSELoss(reduction='mean').to(self.dev)
+        else:
+            self.criterion = torch.nn.CrossEntropyLoss(reduction='mean').to(self.dev)
+        
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=self.ARGS['lr']) 
         if ckpt_path is not None:
             self.model.load_state_dict(ckpt['model'])
@@ -235,65 +67,30 @@ class AutoAtlas:
         self.model.train()
        
         num_batch = 0 
-        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss = 0.0,0.0,0.0,0.0,0.0
-        for data_in,mask_in,_,_ in train_loader:
-            data_in = data_in.to(self.cnnenc_dev)
-            mask_in = mask_in.to(self.acc_dev)
+        avg_loss = 0.0
+        for data_in,mask_in,gt_out,_,_ in train_loader:
+            data_in = data_in.to(self.dev)
+            mask_in = mask_in.to(self.dev)
+            data_in[mask_in == False] = 0
+            gt_out = gt_out.to(self.dev)
 
             self.optimizer.zero_grad()
-            norm_seg,data_out,_ = self.model(data_in)
-            norm_seg = norm_seg.to(self.acc_dev)           
-            data_out = [d.to(self.acc_dev) for d in data_out]         
- 
-            if self.ARGS['rel_reg']>0:
-                mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
-            else:
-                mse_loss = torch.FloatTensor([0]).to(self.acc_dev)
-            if self.ARGS['smooth_reg']>0:
-                smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
-            else:
-                smooth_loss = torch.FloatTensor([0]).to(self.acc_dev)
-            if self.ARGS['devr_reg']>0:
-                devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
-            else:
-                devr_loss = torch.FloatTensor([0]).to(self.acc_dev)
-            if self.ARGS['roi_reg']>0:
-                roi_loss = self.criterion.roi_loss(norm_seg,mask_in)
-            else:
-                roi_loss = torch.FloatTensor([0]).to(self.acc_dev)
-            tot_loss = mse_loss+smooth_loss+devr_loss+roi_loss
+            data_out = self.model(data_in)
 
+            batch_loss = self.criterion(data_out,gt_out)
             #import pdb; pdb.set_trace()
-            tot_loss.backward()
+            batch_loss.backward()
             self.optimizer.step()
 
-            batch_mse_loss = mse_loss.item()
-            batch_smooth_loss = smooth_loss.item()
-            batch_devr_loss = devr_loss.item()
-            batch_roi_loss = roi_loss.item()
-            batch_tot_loss = tot_loss.item()
-
-            avg_mse_loss += batch_mse_loss
-            avg_smooth_loss += batch_smooth_loss
-            avg_devr_loss += batch_devr_loss
-            avg_roi_loss += batch_roi_loss
-            avg_tot_loss += batch_tot_loss
+            batch_loss = batch_loss.item()
+            avg_loss += batch_loss
             num_batch += 1
-            print("TRAIN: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}, roi {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_devr_loss,batch_roi_loss))
+            print("TRAIN: batch loss: {:.2e}".format(batch_loss))
 
-        avg_tot_loss /= num_batch
-        avg_mse_loss /= num_batch
-        avg_smooth_loss /= num_batch
-        avg_devr_loss /= num_batch
-        avg_roi_loss /= num_batch
-        print("TRAIN: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}, roi {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss))
-
-        self.train_tot_loss = avg_tot_loss
-        self.train_mse_loss = avg_mse_loss
-        self.train_smooth_loss = avg_smooth_loss
-        self.train_devr_loss = avg_devr_loss
-        self.train_roi_loss = avg_roi_loss
-        return avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss
+        avg_loss /= num_batch
+        print("TRAIN: average loss: {:.2e}".format(avg_loss))
+        self.train_loss = avg_loss
+        return avg_loss
 
     def test(self,dataset):
         num_workers = min(self.ARGS['batch'],mp.cpu_count())
@@ -303,90 +100,45 @@ class AutoAtlas:
         self.model.eval()
         
         num_batch = 0 
-        avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss = 0.0,0.0,0.0,0.0,0.0
+        avg_loss = 0.0
         with torch.no_grad():
-            for data_in,mask_in,_,_ in test_loader:
-                data_in = data_in.to(self.cnnenc_dev)
-                mask_in = mask_in.to(self.acc_dev)
+            for data_in,mask_in,gt_out,_,_ in test_loader:
+                data_in = data_in.to(self.dev)
+                mask_in = mask_in.to(self.dev)
+                data_in[mask_in == False] = 0
+                gt_out = gt_out.to(self.dev)
 
-                norm_seg,data_out,_ = self.model(data_in)
-                norm_seg = norm_seg.to(self.acc_dev)
-                data_out = [d.to(self.acc_dev) for d in data_out]         
+                data_out = self.model(data_in)
+                batch_loss = self.criterion(data_out,gt_out)
+                batch_loss = batch_loss.item()
 
-                if self.ARGS['rel_reg']>0:
-                    mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
-                else:
-                    mse_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                if self.ARGS['smooth_reg']>0:
-                    smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
-                else:
-                    smooth_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                if self.ARGS['devr_reg']>0:
-                    devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
-                else:
-                    devr_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                if self.ARGS['roi_reg']>0:
-                    roi_loss = self.criterion.roi_loss(norm_seg,mask_in)
-                else:
-                    roi_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                tot_loss = mse_loss+smooth_loss+devr_loss+roi_loss
-                
-                batch_mse_loss = mse_loss.item()
-                batch_smooth_loss = smooth_loss.item()
-                batch_devr_loss = devr_loss.item()
-                batch_roi_loss = roi_loss.item()
-                batch_tot_loss = tot_loss.item()
-
-                avg_mse_loss += batch_mse_loss
-                avg_smooth_loss += batch_smooth_loss
-                avg_devr_loss += batch_devr_loss
-                avg_roi_loss += batch_roi_loss
-                avg_tot_loss += batch_tot_loss
+                avg_loss += batch_loss
                 num_batch += 1
-                print("TEST: batch losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}, roi {:.2e}".format(batch_tot_loss,batch_mse_loss,batch_smooth_loss,batch_devr_loss,batch_roi_loss))
+                print("TEST: batch loss: {:.2e}".format(batch_loss))
                     
-        avg_tot_loss /= num_batch
-        avg_mse_loss /= num_batch
-        avg_smooth_loss /= num_batch
-        avg_devr_loss /= num_batch
-        avg_roi_loss /= num_batch
-        print("TEST: average losses: tot {:.2e}, mse {:.2e}, smooth {:.2e}, devr {:.2e}, roi {:.2e}".format(avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss))
+        avg_loss /= num_batch
+        print("TEST: average loss: {:.2e}".format(avg_loss))
         
-        self.test_tot_loss = avg_tot_loss
-        self.test_mse_loss = avg_mse_loss
-        self.test_smooth_loss = avg_smooth_loss
-        self.test_devr_loss = avg_devr_loss
-        self.test_roi_loss = avg_roi_loss
-        return avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss
+        self.test_loss = avg_loss
+        return avg_loss
 
     def process(self,dataset,ret_input=True):
         loader = DataLoader(dataset,batch_size=self.ARGS['batch'],shuffle=False)
         self.model.eval()
         with torch.no_grad():
-            segs,recs,inps,masks,codes,din_files,mk_files = [],[],[],[],[],[],[]
-            for idx,(din,mk,din_fl,mk_fl) in enumerate(loader):
-                din = din.to(self.cnnenc_dev)
-                sg,rc,cd = self.model(din)
-                if ret_input:
-                    din = np.squeeze(din.cpu().numpy(),axis=1)
-                    din = np.split(din,len(din_fl),axis=0) #List of ndarrays with singleton axis 0
-                    inps.extend([np.squeeze(sl,axis=0) for sl in din])
-                sg = np.split(sg.cpu().numpy(),len(din_fl),axis=0)
-                segs.extend([np.squeeze(sl,axis=0) for sl in sg])
-                rc = [np.squeeze(sl.cpu().numpy(),axis=1) for sl in rc]
-                rc = np.split(np.stack(rc,axis=1),len(din_fl),axis=0)
-                recs.extend([np.squeeze(sl,axis=0) for sl in rc])
-                mk = np.split(np.squeeze(mk.cpu().numpy(),axis=1),len(din_fl),axis=0)
-                masks.extend([np.squeeze(sl,axis=0) for sl in mk])
-                cd = np.split(cd.cpu().numpy(),len(din_fl),axis=0) 
-                codes.extend([np.squeeze(sl,axis=0) for sl in cd])
-                din_files.extend(list(din_fl))
-                mk_files.extend(list(mk_fl))
+            data_in,files_in,data_out,files_out = [],[],[],[]
+            for idx,(din,mk,gt,din_fl,mk_fl) in enumerate(loader):
+                din = din.to(self.dev)
+                mk = mk.to(self.dev)
+                din[mk == False] = 0.0
+                data_in.append(din)
+                dout = self.model(din)
+                data_out.append(dout)
  
         if ret_input:
-            return segs,recs,masks,codes,din_files,mk_files,inps
+            return data_out,files_out,data_in,files_in
         else:
-            return segs,recs,masks,codes,din_files,mk_files
+            return data_out,files_out
 
     def get_ckpt_path(self, epoch, filen):
         return filen.format(epoch)
@@ -397,16 +149,8 @@ class AutoAtlas:
             'model': self.model.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'epoch': epoch,
-            'train_tot_loss': self.train_tot_loss,
-            'train_mse_loss': self.train_mse_loss,
-            'train_smooth_loss': self.train_smooth_loss,
-            'train_devr_loss': self.train_devr_loss,
-            'train_roi_loss': self.train_roi_loss,
-            'test_tot_loss': self.test_tot_loss,
-            'test_mse_loss': self.test_mse_loss,
-            'test_smooth_loss': self.test_smooth_loss,
-            'test_devr_loss': self.test_devr_loss,
-            'test_roi_loss': self.test_roi_loss,
+            'train_loss': self.train_loss,
+            'test_loss': self.test_loss,
         }
         ckpt_path = self.get_ckpt_path(epoch,filen)
         if os.path.exists(ckpt_path):
