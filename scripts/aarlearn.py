@@ -6,25 +6,6 @@ from .cliargs import get_args
 from .rlargs import RLEARN_ARGS
 from .cliargs import HELP_MSG_DICT as HELP
 
-def read_code(filenames,only_embed):
-    dict_codes = {}
-    for filen in filenames:
-        with open(filen,mode='r') as csv_file:
-            csv_reader = csv.DictReader(csv_file,delimiter=',')
-            num_embed = len([k for k in csv_reader.fieldnames if 'encoding ' in k])
-            exp_fields = ['region','normalized volume','normalized surface area'] + ['encoding {}'.format(i) for i in range(num_embed)]
-            assert csv_reader.fieldnames == exp_fields
-            codes = []
-            if only_embed:
-                for row in csv_reader:
-                    codes.append([row['embed_{}'.format(k)] for k in range(num_embed)])
-            else:
-                for row in csv_reader:
-                    codes.append([row[key] for key in csv_reader.fieldnames if key!='region'])
-        subj = os.path.split(filen)[-1].split('_')[0]
-        dict_codes[subj] = np.stack(codes,axis=0)
-    return dict_codes
-
 def get_dataIO(in_file,out_file,smpl_list,target,task_type):
     samples = []
     with open(smpl_list,'r') as csv_file:

@@ -3,9 +3,12 @@
 #SBATCH -t 24:00:00
 #SBATCH -p pbatch
 #SBATCH -A ccp
+##SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi16_rad1_2_roi10/train_log.txt
+#SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi24_rad1_2_roi10/train_log.txt
+
 ##SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi16_rad1_5_roi1/train_log.txt
 ##SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi24_rad1_5_roi1/train_log.txt
-#SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi32_rad1_5_roi1/train_log.txt
+##SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi32_rad1_5_roi1/train_log.txt
 
 ##SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi16/train_log.txt
 ##SBATCH -o /p/lustre1/mohan3/Data/TBI/HCP/2mm/aa_roi16_rad1_5/train_log.txt
@@ -18,9 +21,12 @@
 source ~/.bashrc
 conda activate pytorch36
 
-#aatrain --cli_args aa_roi16_rad1_5_roi1.cfg
-#aatrain --cli_args aa_roi24_rad1_5_roi1.cfg
-aatrain --cli_args aa_roi32_rad1_5_roi1.cfg
+#aatrain --cli_args aa_roi16_rad1_2_roi10.cfg
+aatrain --cli_args aa_roi24_rad1_2_roi10.cfg
+ 
+#aatrain --cli_args aa_roi16_rad1_5_roi1.cfg --load_epoch 138 
+#aatrain --cli_args aa_roi24_rad1_5_roi1.cfg --load_epoch 101
+#aatrain --cli_args aa_roi32_rad1_5_roi1.cfg
 
 #aatrain --cli_args aa_roi16.cfg --load_epoch 225
 #aatrain --cli_args aa_roi16_rad1_5.cfg

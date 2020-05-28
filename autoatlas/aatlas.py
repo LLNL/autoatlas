@@ -111,7 +111,8 @@ class CustomLoss:
 
     def roi_loss(self,seg,mask):
         seg = seg*mask
-        seg = seg/torch.sum(seg,dim=self.dimlist,keepdim=True)
+        seg_sum = torch.sum(seg,dim=self.dimlist,keepdim=True)
+        seg = seg/(seg_sum+self.eps)
         centr_z = torch.sum(seg*self.grid_z,dim=self.dimlist,keepdim=True)  
         centr_y = torch.sum(seg*self.grid_y,dim=self.dimlist,keepdim=True)  
         if self.dim == 3:
@@ -123,8 +124,9 @@ class CustomLoss:
             dist = dist + (self.grid_x-centr_x)*(self.grid_x-centr_x)
         dist = torch.sqrt(dist)       
  
-        lhood = torch.where(dist<=self.roi_rad,seg,self.zero_tensor)  
-        return -self.roi_reg*torch.mean(torch.log(torch.sum(lhood,dim=self.dimlist))) 
+        lhood = torch.where(dist<=self.roi_rad,seg,self.zero_tensor)
+        lhood = torch.where(seg_sum>self.eps,torch.log(torch.sum(lhood,dim=self.dimlist,keepdim=True)),self.zero_tensor) 
+        return -self.roi_reg*torch.mean(lhood) 
 
 #    def entr_loss(self,seg,mask)
 #        if self.dim == 3:
