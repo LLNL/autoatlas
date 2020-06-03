@@ -3,7 +3,7 @@ import os
 import nibabel as nib
 import matplotlib.pyplot as plt
 
-tags = ['aa_freqs0_05','aa_smooth0_2_freqs0_05','aa_devr0_1','aa_smooth0_2_devr0_1']
+tags = ['aa_labs16_smooth0_1_devrm0_8_roim1_2_lb3']
 subjs = ['100307','100408','994273','995174']
 num_labels = 16
 
@@ -19,23 +19,28 @@ def save_fig(arr,filen,cmap=None,out_dir='./'):
 
 for tag in tags:
     for sub in subjs:
-        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/train/{}/'.format(tag,sub)
         out_folder = os.path.join(os.path.join('figs',tag),sub)
         if not os.path.exists(out_folder):
             os.makedirs(out_folder) 
 
+        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/train/{}/'.format(tag,sub)
         seg = nib.load(os.path.join(log_dir,'seg_vol.nii.gz')).get_fdata()
+        rec = nib.load(os.path.join(log_dir,'rec_vol.nii.gz')).get_fdata()
+        prob = nib.load(os.path.join(log_dir,'prob_vol.nii.gz')).get_fdata()
+        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/train/{}/'.format('',sub)
+        T1 = nib.load(os.path.join(log_dir,'T1.nii.gz')).get_fdata()
+        mask = nib.load(os.path.join(log_dir,'mask.nii.gz')).get_fdata()
+
         segrgb = np.zeros((seg.shape[0],seg.shape[1],seg.shape[2],3),dtype=np.uint8)
         for i in range(num_labels):
             segrgb[seg==i] = rgb_list[i]
+        segrgb[mask==0.0] = np.array([0,0,0],dtype=np.uint8)
 
         sh = seg.shape
         save_fig(segrgb[sh[0]//2],'seg_z.png',out_dir=out_folder)
         save_fig(segrgb[:,sh[1]//2],'seg_y.png',out_dir=out_folder)
         save_fig(segrgb[:,:,sh[2]//2],'seg_x.png',out_dir=out_folder)
         
-        rec = nib.load(os.path.join(log_dir,'rec_vol.nii.gz')).get_fdata()
-        prob = nib.load(os.path.join(log_dir,'prob_vol.nii.gz')).get_fdata()
         assert prob.shape == rec.shape and prob.ndim == 4
         rec = np.sum(rec*prob,axis=-1) 
         sh = rec.shape
@@ -43,13 +48,10 @@ for tag in tags:
         save_fig(rec[:,sh[1]//2],'rec_y.png',out_dir=out_folder)
         save_fig(rec[:,:,sh[2]//2],'rec_x.png',out_dir=out_folder)
 
-        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/train/995174/'.format('')
-        T1 = nib.load(os.path.join(log_dir,'T1.nii.gz')).get_fdata()
         save_fig(T1[sh[0]//2],'T1_z.png',out_dir=out_folder)
         save_fig(T1[:,sh[1]//2],'T1_y.png',out_dir=out_folder)
         save_fig(T1[:,:,sh[2]//2],'T1_x.png',out_dir=out_folder)
         
-        mask = nib.load(os.path.join(log_dir,'mask.nii.gz')).get_fdata()
         save_fig(mask[sh[0]//2],'mask_z.png',out_dir=out_folder)
         save_fig(mask[:,sh[1]//2],'mask_y.png',out_dir=out_folder)
         save_fig(mask[:,:,sh[2]//2],'mask_x.png',out_dir=out_folder)

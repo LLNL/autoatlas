@@ -31,24 +31,35 @@ def partition_encode(seg,mask):
     return vol_meas,area_meas
 
 class CustomLoss:
-    def __init__(self,rel_reg,smooth_reg,devr_reg,roi_reg,min_freqs,roi_rad,npow,sizes,device):
-        print('CustomLoss: rel_reg={},smooth_reg={},devr_reg={},roi_reg={},min_freqs={},roi_rad={},npow={},sizes={}'.format(rel_reg,smooth_reg,devr_reg,roi_reg,min_freqs,roi_rad,npow,sizes))
-        dim = len(sizes)
+    def __init__(self,num_labels,sizes,rel_reg,smooth_reg,devr_reg,roi_reg,norm_pow,devr_mult,roi_mult,device):
+        print('CustomLoss: num_labels={},sizes={},rel_reg={},smooth_reg={},devr_reg={},roi_reg={},norm_pow={},devr_mult={},roi_mult={},device={}'.format(num_labels,sizes,rel_reg,smooth_reg,devr_reg,roi_reg,norm_pow,devr_mult,roi_mult,device))
+        self.dim = len(sizes)
+        self.dimlist = [2+i for i in range(self.dim)]
+        
         self.rel_reg = rel_reg
         self.smooth_reg = smooth_reg
         self.devr_reg = devr_reg
         self.roi_reg = roi_reg
-        self.min_freqs = min_freqs
-        self.roi_rad = roi_rad   
-        self.npow = npow
-        self.dim = dim
-        self.dimlist = [2+i for i in range(self.dim)]
-        if dim==3:
+
+        self.devr_mult = devr_mult
+        self.min_freqs = self.devr_mult/num_labels
+
+        self.roi_mult = roi_mult
+        if self.dim==3:
+            self.roi_radft = self.roi_mult*(3.0/(4.0*np.pi*num_labels))**(1.0/3)
+        elif self.dim==2:
+            self.roi_radft = self.roi_mult*(1.0/(np.pi*num_labels))**(1.0/2)
+        else:
+            raise ValueError('Only 3D and 2D inputs are supported.')
+        print('CustomLoss: min_freqs={},roi_radft={}'.format(self.min_freqs,self.roi_radft))
+
+        self.norm_pow = norm_pow
+        if self.dim==3:
             self.neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
                        [1,-1,-1],[1,-1,0],[1,-1,1],
                        [1,0,-1], [1,0,0], [1,0,1],
                        [1,1,-1], [1,1,0], [1,1,1]]
-        elif dim==2:
+        elif self.dim==2:
             self.neighs = [[0,1,np.nan],[1,-1,np.nan],[1,0,np.nan],[1,1,np.nan]]
         else:
             raise ValueError('dim must be either 2 or 3')
@@ -76,11 +87,13 @@ class CustomLoss:
         mse_losses = []
         den = torch.sum(mask,dim=self.dimlist)
         for i,r in enumerate(recs):
-            num = torch.mean(torch.abs(gtruth-r)**self.npow,dim=1,keepdim=True)
+            num = torch.mean(torch.abs(gtruth-r)**self.norm_pow,dim=1,keepdim=True)
             num = torch.sum(num*seg[:,i:i+1]*mask,dim=self.dimlist)
             mse_losses.append(num/den)
         #return torch.mean(torch.stack(mse_losses))
-        return self.rel_reg*torch.mean(torch.sum(torch.stack(mse_losses,dim=-1),dim=-1))
+        mse_losses = torch.sum(torch.stack(mse_losses,dim=-1),dim=-1)
+        assert (not torch.isnan(mse_losses).any()),torch.isnan(mse_losses)
+        return self.rel_reg*torch.mean(mse_losses)
 
     def smooth_loss(self,seg,mask):
         nums,dens = [],[]
@@ -101,15 +114,22 @@ class CustomLoss:
             dens.append(torch.sum(W,dim=self.dimlist))
         smooth_loss = torch.sum(torch.stack(nums,dim=-1),dim=-1)/torch.sum(torch.stack(dens,dim=-1),dim=-1)   
         smooth_loss = -torch.log(torch.sum(smooth_loss,dim=1))
+        assert (not torch.isnan(smooth_loss).any()),torch.isnan(smooth_loss)
         return self.smooth_reg*torch.mean(smooth_loss)
 
     def devr_loss(self,seg,mask):
         clp = torch.sum(seg*mask,dim=self.dimlist)/torch.sum(mask,dim=self.dimlist)
         clp = -torch.log((clp+self.eps*self.min_freqs)/self.min_freqs)
         clp = torch.clamp(clp,min=0)
+        assert (not torch.isnan(clp).any()),torch.isnan(clp)
         return self.devr_reg*torch.mean(clp)
 
     def roi_loss(self,seg,mask):
+        if self.dim==3:
+            roi_rad = self.roi_radft*(torch.sum(mask)**(1.0/3))
+        else:
+            roi_rad = self.roi_radft*(torch.sum(mask)**(1.0/2))
+            
         seg = seg*mask
         seg_sum = torch.sum(seg,dim=self.dimlist,keepdim=True)
         seg = seg/(seg_sum+self.eps)
@@ -123,9 +143,10 @@ class CustomLoss:
         if self.dim == 3:
             dist = dist + (self.grid_x-centr_x)*(self.grid_x-centr_x)
         dist = torch.sqrt(dist)       
- 
-        lhood = torch.where(dist<=self.roi_rad,seg,self.zero_tensor)
-        lhood = torch.where(seg_sum>self.eps,torch.log(torch.sum(lhood,dim=self.dimlist,keepdim=True)),self.zero_tensor) 
+
+        lhood = torch.where(dist<=roi_rad,seg,seg*torch.exp(-((dist-roi_rad)/(0.1*roi_rad))))
+        lhood = torch.where(seg_sum>self.eps,torch.log(torch.sum(lhood,dim=self.dimlist,keepdim=True)),self.zero_tensor)
+        assert (not torch.isnan(lhood).any()),torch.isnan(lhood)
         return -self.roi_reg*torch.mean(lhood) 
 
 #    def entr_loss(self,seg,mask)
@@ -138,7 +159,7 @@ class CustomLoss:
          
     
 class AutoAtlas:
-    def __init__(self,num_labels=None,sizes=None,data_chan=None,rel_reg=None,smooth_reg=None,devr_reg=None,roi_reg=None,min_freqs=None,roi_rad=None,batch=None,lr=None,unet_chan=None,unet_blocks=None,aenc_chan=None,aenc_depth=None,re_pow=None,distr=None,device=None,load_ckpt_epoch=None,ckpt_file='model_epoch_{}.pth'):
+    def __init__(self,num_labels=None,sizes=None,data_chan=None,rel_reg=None,smooth_reg=None,devr_reg=None,roi_reg=None,devr_mult=None,roi_mult=None,batch=None,lr=None,unet_chan=None,unet_blocks=None,unet_layblk=None,aenc_chan=None,aenc_depth=None,re_pow=None,distr=None,device=None,load_ckpt_epoch=None,ckpt_file='model_epoch_{}.pth'):
         self.ARGS = {}
         self.ARGS['ckpt_file'] = ckpt_file
         self.ARGS['load_ckpt_epoch'] = load_ckpt_epoch
@@ -179,8 +200,9 @@ class AutoAtlas:
             self.test_devr_loss = float('inf')
             self.ARGS.update({'num_labels':num_labels,'sizes':sizes,'data_chan':data_chan,
                         'rel_reg':rel_reg,'smooth_reg':smooth_reg,'devr_reg':devr_reg,'roi_reg':roi_reg,
-                        'min_freqs':min_freqs,'roi_rad':roi_rad,
-                        'batch':batch,'lr':lr,'unet_chan':unet_chan,'unet_blocks':unet_blocks,
+                        'devr_mult':devr_mult,'roi_mult':roi_mult,
+                        'batch':batch,'lr':lr,'unet_chan':unet_chan,
+                        'unet_blocks':unet_blocks,'unet_layblk':unet_layblk,
                         'aenc_chan':aenc_chan,'aenc_depth':aenc_depth,'re_pow':re_pow,
                         'distr':distr,'device':device})
         
@@ -210,7 +232,7 @@ class AutoAtlas:
         assert self.acc_dev==self.cnnenc_dev
 
         #print("Devices: Accumulator {}, CNN encoder {}, CNN decoder {}, autoencoders {}".format(self.acc_dev,self.cnnenc_dev,self.cnndec_dev,self.aenc_devs))
-        self.cnn = UNet(self.ARGS['num_labels'],dim=dim,data_chan=self.ARGS['data_chan'],kernel_size=3,filters=self.ARGS['unet_chan'],blocks=self.ARGS['unet_blocks'],batch_norm=False,pad_type='SAME',enc_dev=self.cnnenc_dev,dec_dev=self.cnndec_dev)
+        self.cnn = UNet(self.ARGS['num_labels'],dim=dim,data_chan=self.ARGS['data_chan'],kernel_size=3,filters=self.ARGS['unet_chan'],blocks=self.ARGS['unet_blocks'],layers_block=self.ARGS['unet_layblk'],batch_norm=False,pad_type='SAME',enc_dev=self.cnnenc_dev,dec_dev=self.cnndec_dev)
    
         self.autoencs = torch.nn.ModuleList([])
         for i in range(self.ARGS['num_labels']):
@@ -223,7 +245,7 @@ class AutoAtlas:
             self.model = torch.nn.DataParallel(self.model,device_ids=devids)
             torch.backends.cudnn.benchmark = True
        
-        self.criterion = CustomLoss(rel_reg=self.ARGS['rel_reg'],smooth_reg=self.ARGS['smooth_reg'],devr_reg=self.ARGS['devr_reg'],roi_reg=self.ARGS['roi_reg'],min_freqs=self.ARGS['min_freqs'],roi_rad=self.ARGS['roi_rad'],npow=self.ARGS['re_pow'],sizes=self.ARGS['sizes'],device=device)
+        self.criterion = CustomLoss(num_labels=self.ARGS['num_labels'],sizes=self.ARGS['sizes'],rel_reg=self.ARGS['rel_reg'],smooth_reg=self.ARGS['smooth_reg'],devr_reg=self.ARGS['devr_reg'],roi_reg=self.ARGS['roi_reg'],norm_pow=self.ARGS['re_pow'],devr_mult=self.ARGS['devr_mult'],roi_mult=self.ARGS['roi_mult'],device=device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=self.ARGS['lr']) 
         if ckpt_path is not None:
             self.model.load_state_dict(ckpt['model'])

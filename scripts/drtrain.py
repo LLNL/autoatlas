@@ -27,7 +27,6 @@ def get_dout(out_file,smpl_list,target,task_type):
     data_out = np.stack(data_out,axis=0)
     if task_type == 'regression':
         data_out = data_out.astype(float)
-    
     return data_out,samples 
             
 def main():

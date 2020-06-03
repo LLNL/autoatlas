@@ -176,18 +176,26 @@ class AutoEnc(torch.nn.Module):
         if dim == 2:
             self.conv = torch.nn.Conv2d
             self.conv_tran = torch.nn.ConvTranspose2d
+            self.max_pool = torch.nn.MaxPool3d(3,padding=0)
         elif dim == 3:
             self.conv = torch.nn.Conv3d
             self.conv_tran = torch.nn.ConvTranspose3d
+            self.max_pool = torch.nn.MaxPool3d(2,padding=0)
 
         self.encoders = torch.nn.ModuleList([])
         stages = depth//2
         for i in range(stages):
             #in_filters = 2*data_chan if i==0 else filters
             in_filters = data_chan if i==0 else filters
+            #if pool_type == 'conv':
             enc = torch.nn.Sequential(
                 self.conv(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width,stride=pool),
                 torch.nn.ReLU(inplace=True))
+            #else:
+            #    enc = torch.nn.Sequential(
+            #        self.conv(in_channels=in_filters,out_channels=filters,kernel_size=kernel_size,padding=pad_width),
+            #        torch.nn.ReLU(inplace=True),
+            #        self.max_pool)
             self.encoders.append(enc)
 
         if dim == 2:

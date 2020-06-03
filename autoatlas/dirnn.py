@@ -12,14 +12,12 @@ class DirPredNN:
         self.ARGS = {}
         self.ARGS['ckpt_file'] = ckpt_file
         self.ARGS['load_ckpt_epoch'] = load_ckpt_epoch
-        self.ARGS['task'] = task
-        self.ARGS['num_labels'] = num_labels
 
         ckpt_path = None
         if load_ckpt_epoch is not None:
             ckpt_path = self.get_ckpt_path(load_ckpt_epoch,ckpt_file)
             try:
-                ckpt = torch.load(ckpt_path)
+                ckpt = torch.load(ckpt_path,map_location=torch.device(device))
             except FileNotFoundError:
                 raise ValueError('Checkpoint path does not exist: {}'.format(ckpt_path))
             else:
@@ -35,13 +33,13 @@ class DirPredNN:
             self.start_epoch = 0
             self.train_loss = float('inf')
             self.test_loss = float('inf')
-            self.ARGS.update({'sizes':sizes,'data_chan':data_chan,
+            self.ARGS.update({'sizes':sizes,'data_chan':data_chan,'task':task,'num_labels':num_labels,
                         'batch':batch,'lr':lr,'cnn_chan':cnn_chan,'cnn_depth':cnn_depth,'device':device})
         
         dim = len(self.ARGS['sizes'])
         self.dev = self.ARGS['device']
 
-        out_features = 1 if task == 'regression' else num_labels
+        out_features = 1 if self.ARGS['task'] == 'regression' else self.ARGS['num_labels']
         self.model = EncPred(self.ARGS['sizes'],data_chan=self.ARGS['data_chan'],kernel_size=7,filters=self.ARGS['cnn_chan'],depth=self.ARGS['cnn_depth'],pool=2,out_features=out_features,batch_norm=False,pad_type='SAME').to(self.dev) 
         
         print('Using torch.nn.DataParallel for parallel processing')
@@ -126,19 +124,21 @@ class DirPredNN:
         loader = DataLoader(dataset,batch_size=self.ARGS['batch'],shuffle=False)
         self.model.eval()
         with torch.no_grad():
-            data_in,files_in,data_out,files_out = [],[],[],[]
+            data_in,data_out,dfile_in,mfile_in = [],[],[],[]
             for idx,(din,mk,gt,din_fl,mk_fl) in enumerate(loader):
                 din = din.to(self.dev)
                 mk = mk.to(self.dev)
                 din[mk == False] = 0.0
-                data_in.append(din)
-                dout = self.model(din)
-                data_out.append(dout)
+                data_in.extend(list(din))
+                dout = self.model(din).cpu().numpy().squeeze()
+                data_out.extend(dout.tolist())
+                dfile_in.extend(list(din_fl))
+                mfile_in.extend(list(mk_fl))
  
         if ret_input:
-            return data_out,files_out,data_in,files_in
+            return data_out,dfile_in,mfile_in,data_in
         else:
-            return data_out,files_out
+            return data_out,dfile_in,mfile_in
 
     def get_ckpt_path(self, epoch, filen):
         return filen.format(epoch)

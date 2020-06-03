@@ -6,7 +6,7 @@ import csv
 import cc3d
 
 #tags = ['aa_freqs0_05','aa_smooth0_2_freqs0_05','aa_devr0_1','aa_smooth0_2_devr0_1']
-tags = ['aa_devr0_1']
+tags = ['aa_labs16_smooth0_1_devrm0_8_roim1_2_lb3']
 mode = 'train'
 num_labels = [16]
 
@@ -76,9 +76,8 @@ for idx,tag in enumerate(tags):
             for u in uniq:
                 counts.append(np.sum(seg_labs==u))
             max_counts.append(max(counts)/sum(counts))
-        print([float('{:.2f}'.format(cnt)) for cnt in max_counts])
-        """
-            if max_counts[-1] < 0.9: 
+        #print([float('{:.2f}'.format(cnt)) for cnt in max_counts])
+            if max_counts[-1] < 0.95: 
                 vol = labs.copy()
                 vol[seg!=l] = 0
                 vol[mask==False] = 0
@@ -95,4 +94,3 @@ for idx,tag in enumerate(tags):
                 plt.colorbar()
                 plt.show()
         print([float('{:.2f}'.format(cnt)) for cnt in max_counts])
-        """

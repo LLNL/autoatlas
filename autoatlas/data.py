@@ -33,10 +33,10 @@ class NibData(Dataset):
  
         data_vol = torch.unsqueeze(torch.from_numpy(data_vol),dim=0)
         mask_vol = torch.unsqueeze(torch.from_numpy(mask_vol),dim=0)
-        target = torch.FloatTensor([self.targets[idx]])
         if self.targets is None:
             return data_vol.float(),mask_vol.float(),data_filen,mask_filen
         else:
+            target = torch.FloatTensor([self.targets[idx]])
             return data_vol.float(),mask_vol.float(),target,data_filen,mask_filen
             
 #TEMPORARY: SHOULD INCLUDE CODE TO CHECK SAME METADATA FOR MASK AND DATA FILES IN DATA READER

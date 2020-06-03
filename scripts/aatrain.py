@@ -26,6 +26,7 @@ def main():
             'in_dims':[str,'Dimensions separated by comma.'],
             'unet_chan':[int,'Number of U-net input channels.'],
             'unet_blocks':[int,'Number of U-net blocks each with two conv layers.'],
+            'unet_layblk':[int,'Layers per block'],
             'aenc_chan':[int,'Number of autoencoder channels.'],
             'aenc_depth':[int,'Depth of autoencoder.'],
             'in_chan':[int,'Number of channels in input image or volume.'],
@@ -34,8 +35,8 @@ def main():
             'smooth_reg':[float,'Regularization enforcing smoothness.'],
             'devr_reg':[float,'Regularization parameter for anti-devouring loss.'],
             'roi_reg':[float,'Regularization parameter for ROI loss.'],
-            'roi_rad_mult':[float,'Radius parameter for ROI loss.'],
-            'min_freqs_mult':[float,'Minimum probability of occurance of each class'],
+            'devr_mult':[float,'Multiple of minimum volume of each region.'],
+            'roi_mult':[float,'Multiple of minimum spheretical region of influence.'],
             }
 
     ARGS = get_args(ARGS_dict)
@@ -53,21 +54,11 @@ def main():
 
     #NN Model
     dims = [int(d) for d in ARGS['in_dims'].split(',')]
-    min_freqs = ARGS['min_freqs_mult']/ARGS['num_labels']
-
-    if len(dims)==3:
-        roi_rad = ((3.0*dims[0]*dims[1]*dims[2])/(4.0*np.pi*ARGS['num_labels']))**(1.0/3)
-    elif len(dims)==2:
-        roi_rad = ((dims[0]*dims[1])/(np.pi*ARGS['num_labels']))**(1.0/2)
-    else:
-        raise ValueError('Only 3D and 2D inputs are supported.')
-    roi_rad = ARGS['roi_rad_mult']*roi_rad
-    print('min_freqs = {}, roi_rad = {}'.format(min_freqs,roi_rad))
 
     if ARGS['load_epoch'] >= 0:
-        autoseg = AutoAtlas(ARGS['num_labels'],sizes=dims,data_chan=ARGS['in_chan'],rel_reg=ARGS['rel_reg'],smooth_reg=ARGS['smooth_reg'],devr_reg=ARGS['devr_reg'],roi_reg=ARGS['roi_reg'],min_freqs=min_freqs,roi_rad=roi_rad,batch=ARGS['batch'],lr=ARGS['lr'],unet_chan=ARGS['unet_chan'],unet_blocks=ARGS['unet_blocks'],aenc_chan=ARGS['aenc_chan'],aenc_depth=ARGS['aenc_depth'],re_pow=ARGS['re_pow'],distr=ARGS['distr'],device='cuda',load_ckpt_epoch=ARGS['load_epoch'],ckpt_file=ARGS['ckpt'])
+        autoseg = AutoAtlas(ARGS['num_labels'],sizes=dims,data_chan=ARGS['in_chan'],rel_reg=ARGS['rel_reg'],smooth_reg=ARGS['smooth_reg'],devr_reg=ARGS['devr_reg'],roi_reg=ARGS['roi_reg'],devr_mult=ARGS['devr_mult'],roi_mult=ARGS['roi_mult'],batch=ARGS['batch'],lr=ARGS['lr'],unet_chan=ARGS['unet_chan'],unet_blocks=ARGS['unet_blocks'],unet_layblk=ARGS['unet_layblk'],aenc_chan=ARGS['aenc_chan'],aenc_depth=ARGS['aenc_depth'],re_pow=ARGS['re_pow'],distr=ARGS['distr'],device='cuda',load_ckpt_epoch=ARGS['load_epoch'],ckpt_file=ARGS['ckpt'])
     elif ARGS['load_epoch'] == -1:
-        autoseg = AutoAtlas(ARGS['num_labels'],sizes=dims,data_chan=ARGS['in_chan'],rel_reg=ARGS['rel_reg'],smooth_reg=ARGS['smooth_reg'],devr_reg=ARGS['devr_reg'],roi_reg=ARGS['roi_reg'],min_freqs=min_freqs,roi_rad=roi_rad,batch=ARGS['batch'],lr=ARGS['lr'],unet_chan=ARGS['unet_chan'],unet_blocks=ARGS['unet_blocks'],aenc_chan=ARGS['aenc_chan'],aenc_depth=ARGS['aenc_depth'],re_pow=ARGS['re_pow'],distr=ARGS['distr'],device='cuda',ckpt_file=ARGS['ckpt'])
+        autoseg = AutoAtlas(ARGS['num_labels'],sizes=dims,data_chan=ARGS['in_chan'],rel_reg=ARGS['rel_reg'],smooth_reg=ARGS['smooth_reg'],devr_reg=ARGS['devr_reg'],roi_reg=ARGS['roi_reg'],devr_mult=ARGS['devr_mult'],roi_mult=ARGS['roi_mult'],batch=ARGS['batch'],lr=ARGS['lr'],unet_chan=ARGS['unet_chan'],unet_blocks=ARGS['unet_blocks'],unet_layblk=ARGS['unet_layblk'],aenc_chan=ARGS['aenc_chan'],aenc_depth=ARGS['aenc_depth'],re_pow=ARGS['re_pow'],distr=ARGS['distr'],device='cuda',ckpt_file=ARGS['ckpt'])
     else:
         raise ValueError('load_epoch must be greater than or equal to -1')
 
