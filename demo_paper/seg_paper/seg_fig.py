@@ -3,7 +3,7 @@ import os
 import nibabel as nib
 import matplotlib.pyplot as plt
 
-tags = ['aa_labs16_smooth0_1_devrm0_8_roim1_2_lb3']
+tags = ['aa_labs16_smooth0_1_devrr1_0_devrm0_8_uchan32_scroi']
 subjs = ['100307','100408','994273','995174']
 num_labels = 16
 

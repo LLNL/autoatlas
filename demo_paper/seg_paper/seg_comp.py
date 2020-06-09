@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import csv
 
 #tags = ['aa_freqs0_05','aa_smooth0_2_freqs0_05','aa_devr0_1','aa_smooth0_2_devr0_1']
-tags = ['aa_labs16_smooth0_1_devrm0_8_roim1_2_lb3']
+tags = ['aa_labs16_smooth0_1_devrr1_0_devrm0_8_uchan32_scroi']
 mode = 'train'
 num_labels = 16
 

@@ -46,9 +46,9 @@ class CustomLoss:
 
         self.roi_mult = roi_mult
         if self.dim==3:
-            self.roi_radft = self.roi_mult*(3.0/(4.0*np.pi*num_labels))**(1.0/3)
+            self.roi_radft = self.roi_mult*((3.0/(4.0*np.pi))**(1.0/3))
         elif self.dim==2:
-            self.roi_radft = self.roi_mult*(1.0/(np.pi*num_labels))**(1.0/2)
+            self.roi_radft = self.roi_mult*((1.0/np.pi)**(1.0/2))
         else:
             raise ValueError('Only 3D and 2D inputs are supported.')
         print('CustomLoss: min_freqs={},roi_radft={}'.format(self.min_freqs,self.roi_radft))
@@ -78,20 +78,27 @@ class CustomLoss:
             grid_z,grid_y = torch.meshgrid(z,y)
            
         self.zero_tensor = torch.FloatTensor([0.0]).to(device) 
+        self.two_tensor = torch.FloatTensor([2.0]).to(device) 
         self.grid_z = torch.unsqueeze(torch.unsqueeze(grid_z,dim=0),dim=0).type(torch.FloatTensor).to(device)
         self.grid_y = torch.unsqueeze(torch.unsqueeze(grid_y,dim=0),dim=0).type(torch.FloatTensor).to(device)
         if self.dim == 3:
             self.grid_x = torch.unsqueeze(torch.unsqueeze(grid_x,dim=0),dim=0).type(torch.FloatTensor).to(device)
 
     def mse_loss(self,gtruth,recs,seg,mask):
+        assert not torch.isnan(gtruth).any()
+        assert not torch.isnan(mask).any()
+        assert not torch.isnan(seg).any()
+
         mse_losses = []
         den = torch.sum(mask,dim=self.dimlist)
         for i,r in enumerate(recs):
+            assert not torch.isnan(r).any()
             num = torch.mean(torch.abs(gtruth-r)**self.norm_pow,dim=1,keepdim=True)
             num = torch.sum(num*seg[:,i:i+1]*mask,dim=self.dimlist)
             mse_losses.append(num/den)
         #return torch.mean(torch.stack(mse_losses))
         mse_losses = torch.sum(torch.stack(mse_losses,dim=-1),dim=-1)
+
         assert (not torch.isnan(mse_losses).any()),torch.isnan(mse_losses)
         return self.rel_reg*torch.mean(mse_losses)
 
@@ -125,14 +132,17 @@ class CustomLoss:
         return self.devr_reg*torch.mean(clp)
 
     def roi_loss(self,seg,mask):
-        if self.dim==3:
-            roi_rad = self.roi_radft*(torch.sum(mask)**(1.0/3))
-        else:
-            roi_rad = self.roi_radft*(torch.sum(mask)**(1.0/2))
-            
         seg = seg*mask
+        if self.dim==3:
+            roi_rad = self.roi_radft*(torch.sum(seg,dim=self.dimlist,keepdim=True)**(1.0/3))
+        else:
+            roi_rad = self.roi_radft*(torch.sum(seg,dim=self.dimlist,keepdim=True)**(1.0/2))
+        roi_rad = torch.where(roi_rad>self.two_tensor,roi_rad,self.two_tensor) 
+ 
         seg_sum = torch.sum(seg,dim=self.dimlist,keepdim=True)
+        mask_sum = torch.sum(mask,dim=self.dimlist,keepdim=True)
         seg = seg/(seg_sum+self.eps)
+        
         centr_z = torch.sum(seg*self.grid_z,dim=self.dimlist,keepdim=True)  
         centr_y = torch.sum(seg*self.grid_y,dim=self.dimlist,keepdim=True)  
         if self.dim == 3:
@@ -144,8 +154,12 @@ class CustomLoss:
             dist = dist + (self.grid_x-centr_x)*(self.grid_x-centr_x)
         dist = torch.sqrt(dist)       
 
-        lhood = torch.where(dist<=roi_rad,seg,seg*torch.exp(-((dist-roi_rad)/(0.1*roi_rad))))
-        lhood = torch.where(seg_sum>self.eps,torch.log(torch.sum(lhood,dim=self.dimlist,keepdim=True)),self.zero_tensor)
+        lhood = torch.sum(torch.sigmoid(4.6*(roi_rad-dist))*seg,dim=self.dimlist,keepdim=True)
+        cond = seg_sum/mask_sum>0.1*self.min_freqs
+        lhood = torch.where(cond,torch.log(lhood),self.zero_tensor)
+        #print('Total seg_sum/mask_sum <= 0.1 is {}. seg_sum size is {}'.format(torch.sum(torch.bitwise_not(cond)),seg_sum.size()))
+        #lhood = torch.where(seg_sum>self.eps,torch.log(lhood),self.zero_tensor)
+        #lhood = torch.log(lhood)
         assert (not torch.isnan(lhood).any()),torch.isnan(lhood)
         return -self.roi_reg*torch.mean(lhood) 
 

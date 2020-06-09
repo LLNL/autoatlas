@@ -2,16 +2,21 @@ import numpy as np
 import nibabel as nib
 import os
 import csv
+from skimage.filters import threshold_otsu
+from skimage.util import montage
+import cc3d
 
 np.random.seed(0)
 
-mri_folder = '/p/lustre1/hcpdata/processed/T1_decimate/1mm'
-tt_folder = '/p/lustre1/hcpdata/processed/5TT/seg_flip/1mm'
-train_folder = '/p/lustre1/mohan3/Data/TBI/HCP/1mm/train'
-test_folder = '/p/lustre1/mohan3/Data/TBI/HCP/1mm/test'
-dims = [192,192,192]
+mri_folder = '/p/lustre1/hcpdata/processed/T1_decimate/2mm'
+tt_folder = '/p/lustre1/hcpdata/processed/5TT/seg_flip/2mm'
+train_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_nm'
+test_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/test_nm'
+dims = [96,96,96]
 train_num = 80 #percent
-stdev = 286.318
+#stdev = 286.318
+mean = 698.45
+stddev = 165.27 
 
 if not os.path.exists(train_folder):
     os.makedirs(train_folder)
@@ -62,20 +67,34 @@ def save_orgdata(in_files,out_folder):
 
         vol,aff,head = get_data(os.path.join(mri_folder,in_filen))
         t1sh = vol.shape
-        vol = adjust_dims(vol)/stdev
+        vol = adjust_dims(vol)
+        thresh = threshold_otsu(montage(vol,grid_shape=(1,vol.shape[0])))
+        mask = (vol <= thresh/1.5)
+        
+        vol = (vol-mean)/stddev
         out_filen = os.path.join(out_ftemp,'T1.nii.gz'.format(ID))
         save_nifti(out_filen,vol.astype(np.float32),aff,head)
-       
-        vol,aff,head = get_data(os.path.join(tt_folder,'{}-tissue_1mm.nii.gz'.format(ID)))
+        
+        labs = cc3d.connected_components(mask)
+        uniqs = np.unique(labs)
+        max_counts,max_label = 0,0
+        for u in uniqs:
+            cnt = np.sum(np.bitwise_and(labs==u,mask==True))
+            if cnt > max_counts:
+                max_counts = cnt
+                max_label = u
+        mask = np.bitwise_not(labs==max_label).astype(np.uint8) 
+        out_filen = os.path.join(out_ftemp,'mask.nii.gz'.format(ID)) 
+        save_nifti(out_filen,mask,aff,head)
+
+        vol,_,_ = get_data(os.path.join(tt_folder,'{}-tissue_2mm.nii.gz'.format(ID)))
         assert vol.shape==t1sh
 
-        mask = adjust_dims((vol>0).astype(np.uint8))
+        #mask = adjust_dims((vol>0).astype(np.uint8))
         tt = adjust_dims((vol-1).astype(int))
         tt[tt<0] = 0
         assert np.any(tt<=3)
 
-        out_filen = os.path.join(out_ftemp,'mask.nii.gz'.format(ID)) 
-        save_nifti(out_filen,mask,aff,head)
         out_filen = os.path.join(out_ftemp,'5TT.nii.gz'.format(ID)) 
         save_nifti(out_filen,tt,aff,head)
 

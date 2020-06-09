@@ -4,6 +4,8 @@ from autoatlas.utils import adjust_dims
 import os
 
 def overlap_coeff(atlas1,atlas2,mask=None,norm_type=None):
+    mask = np.bitwise_and(mask,atlas2!=3) #HACK: Should be removed
+
     if atlas1.ndim == 3:
         atlas1 = atlas1[np.newaxis]
 
@@ -39,7 +41,9 @@ def overlap_coeff(atlas1,atlas2,mask=None,norm_type=None):
             for idx2,lab2 in enumerate(range(a2_min,a2_max+1,1)):
                 temp1 = np.bitwise_and(mask,atlas1[i]==lab1)
                 temp2 = np.bitwise_and(mask,atlas2[i]==lab2)
-                overlap[i,idx1,idx2] = np.sum(np.bitwise_and(temp1,temp2))   
-                overlap[i,idx1,idx2] /= norm_func(np.sum(temp1),np.sum(temp2))
+                overlap[i,idx1,idx2] = np.sum(np.bitwise_and(temp1,temp2))  
+                den = norm_func(np.sum(temp1),np.sum(temp2))
+                if den > 0: 
+                    overlap[i,idx1,idx2] /= den
     return overlap
 
