@@ -73,7 +73,7 @@ def update_if_none(ARGS,label,cfg_obj,dtype,parser):
         return config_fetch(label,cfg_obj,ARGS['cli_args'],dtype,parser)        
 
 def update_if_false(ARGS,label,cfg_obj,parser):
-    if ARGS[label] == False:
+    if ARGS[label] == True:
         return ARGS[label]
     else:
         rval = config_fetch(label,cfg_obj,ARGS['cli_args'],bool,parser,raise_ex=False)       

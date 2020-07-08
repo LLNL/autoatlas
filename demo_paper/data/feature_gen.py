@@ -2,8 +2,8 @@ import numpy as np
 import csv
 import os
 
-train_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_nm'
-test_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/test_nm'
+train_folder = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/train_zn'
+test_folder = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/test_zn'
 
 def read_scolcsv(filen):
     data = []

@@ -2,13 +2,12 @@ import torch
 import os
 from autoatlas.cnn import EncPred
 from torch.utils.data import DataLoader
-import progressbar
 import numpy as np
 import multiprocessing as mp
 import h5py
 
 class DirPredNN:
-    def __init__(self,sizes=None,data_chan=None,batch=None,lr=None,cnn_chan=None,cnn_depth=None,device=None,load_ckpt_epoch=None,ckpt_file=None,task=None,num_labels=None):
+    def __init__(self,sizes=None,data_chan=None,batch=None,lr=None,wdcy=None,cnn_chan=None,cnn_depth=None,device=None,load_ckpt_epoch=None,ckpt_file=None,task=None,num_labels=None):
         self.ARGS = {}
         self.ARGS['ckpt_file'] = ckpt_file
         self.ARGS['load_ckpt_epoch'] = load_ckpt_epoch
@@ -34,7 +33,7 @@ class DirPredNN:
             self.train_loss = float('inf')
             self.test_loss = float('inf')
             self.ARGS.update({'sizes':sizes,'data_chan':data_chan,'task':task,'num_labels':num_labels,
-                        'batch':batch,'lr':lr,'cnn_chan':cnn_chan,'cnn_depth':cnn_depth,'device':device})
+                        'batch':batch,'lr':lr,'wdcy':wdcy,'cnn_chan':cnn_chan,'cnn_depth':cnn_depth,'device':device})
         
         dim = len(self.ARGS['sizes'])
         self.dev = self.ARGS['device']
@@ -52,7 +51,7 @@ class DirPredNN:
         else:
             self.criterion = torch.nn.CrossEntropyLoss(reduction='mean').to(self.dev)
         
-        self.optimizer = torch.optim.Adam(self.model.parameters(),lr=self.ARGS['lr']) 
+        self.optimizer = torch.optim.Adam(self.model.parameters(),lr=self.ARGS['lr'],weight_decay=self.ARGS['wdcy']) 
         if ckpt_path is not None:
             self.model.load_state_dict(ckpt['model'])
             self.optimizer.load_state_dict(ckpt['optimizer'])

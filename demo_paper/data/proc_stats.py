@@ -15,12 +15,12 @@ with open('/p/lustre1/mohan3/Data/TBI/HCP/2mm/train/subjects.txt','r') as csv_fi
         assert len(row)==1
         samples.append(row[0])
 
-data_files = ['/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_nm/{}/T1.nii.gz'.format(smpl) for smpl in samples]
-mask_files = ['/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_nm/{}/mask.nii.gz'.format(smpl) for smpl in samples]
+data_files = ['/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_zn/{}/T1.nii.gz'.format(smpl) for smpl in samples]
+mask_files = ['/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_zn/{}/mask.nii.gz'.format(smpl) for smpl in samples]
 
 mean = 0.0
 stdev = 0.0
-minm = np.inf
+minm = 0.0
 maxm = 0.0
 for dfilen,mfilen in zip(data_files,mask_files):
     data = nib.load(dfilen).get_fdata() 
@@ -31,13 +31,17 @@ for dfilen,mfilen in zip(data_files,mask_files):
     mean += smpl_mean
     stdev += smpl_std
     smpl_min,smpl_max = mdata.min(),mdata.max()
-    minm = smpl_min if smpl_min<minm else minm
-    maxm = smpl_max if smpl_max>maxm else maxm
+    minm += smpl_min
+    maxm += smpl_max
+#    minm = smpl_min if smpl_min<minm else minm
+#    maxm = smpl_max if smpl_max>maxm else maxm
     
     print(smpl_mean,smpl_std,smpl_min,smpl_max)
 
 mean = mean/len(data_files)
 stdev = stdev/len(data_files)
+minm = minm/len(data_files)
+maxm = maxm/len(data_files)
 print('Number of training files is {}'.format(len(data_files)))
 
 print("mean: " + str(mean))

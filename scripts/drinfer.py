@@ -30,7 +30,7 @@ def get_dout(out_file,smpl_list,target,task_type):
         data_out = data_out.astype(float)
     return data_out,samples 
 
-def process_data(dirNN,smpl_subj,dvol_filen,dmask_filen,gt_all,pred_filen,summ_filen,task,labels):
+def process_data(dirNN,smpl_subj,dvol_filen,dmask_filen,gt_all,pred_filen,summ_filen,task,labels,scaler):
     batch = dirNN.ARGS['batch']
     pred_all = []
     for i in range(0,len(smpl_subj),batch):
@@ -58,6 +58,9 @@ def process_data(dirNN,smpl_subj,dvol_filen,dmask_filen,gt_all,pred_filen,summ_f
 
     gt_all = np.array(gt_all)
     pred_all = np.array(pred_all)
+    assert gt_all.ndim==1
+    assert pred_all.ndim==1
+    pred_all = scaler.inverse_transform(pred_all.reshape(-1,1)).squeeze()
     if task == 'regression':
         r2 = metrics.r2_score(gt_all,pred_all)    
         mae = metrics.mean_absolute_error(gt_all,pred_all)
@@ -108,13 +111,13 @@ def main():
         labels = np.unique(train_out)
         scaler = StandardScaler(with_mean=True,with_std=True)
         scaler.fit(train_out.reshape(-1,1))
-        train_out = scaler.transform(train_out.reshape(-1,1)).squeeze()
-        process_data(dirNN,train_subj,ARGS['train_in'],ARGS['train_mask'],train_out,ARGS['train_pred'],ARGS['train_summ'],ARGS['task'],labels)
+        #train_out = scaler.transform(train_out.reshape(-1,1)).squeeze()
+        process_data(dirNN,train_subj,ARGS['train_in'],ARGS['train_mask'],train_out,ARGS['train_pred'],ARGS['train_summ'],ARGS['task'],labels,scaler)
 
     if ARGS['test_list'] is not None:
         test_out,test_subj = get_dout(ARGS['test_out'],ARGS['test_list'],ARGS['target'],ARGS['task'])
-        test_out = scaler.transform(test_out.reshape(-1,1)).squeeze()
-        process_data(dirNN,test_subj,ARGS['test_in'],ARGS['test_mask'],test_out,ARGS['test_pred'],ARGS['test_summ'],ARGS['task'],labels)
+        #test_out = scaler.transform(test_out.reshape(-1,1)).squeeze()
+        process_data(dirNN,test_subj,ARGS['test_in'],ARGS['test_mask'],test_out,ARGS['test_pred'],ARGS['test_summ'],ARGS['task'],labels,scaler)
 
 if __name__ == "__main__": 
     main() 

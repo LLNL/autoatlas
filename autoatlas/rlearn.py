@@ -1,30 +1,42 @@
 from sklearn.preprocessing import StandardScaler
 import numpy as np
+import inspect
 
 class Predictor:
     def __init__(self,estor):
-        self.scaler = StandardScaler(with_mean=True,with_std=True)
+        self.scaler_X = StandardScaler(with_mean=True,with_std=True)
+        self.scaler_y = StandardScaler(with_mean=True,with_std=True)
         self.estor = estor
 
     def train(self,X,y):
         assert len(X.shape)==3,'in_data must have three dimensions'
         X = np.reshape(X,newshape=(X.shape[0],-1),order='C')
-        self.scaler.fit(X)
-        X = self.scaler.transform(X) 
-        self.estor.fit(X,y) 
+        y = np.reshape(y,newshape=(y.shape[0],1),order='C')
+
+        self.scaler_X.fit(X)
+        X = self.scaler_X.transform(X) 
+
+        self.scaler_y.fit(y)
+        y = self.scaler_y.transform(y) 
+
+        self.estor.fit(X,y.ravel()) 
 
     def predict(self,X):
         assert len(X.shape)==3,'in_data must have three dimensions'
         X = np.reshape(X,newshape=(X.shape[0],-1),order='C')
-        X = self.scaler.transform(X) 
-        return self.estor.predict(X)
+        X = self.scaler_X.transform(X)
+        y = self.estor.predict(X)
+        y = np.reshape(y,newshape=(y.shape[0],1),order='C')
+        y = self.scaler_y.inverse_transform(y)
+        return y.ravel()
 
     def params(self):
         return self.estor.best_params_
 
     def score(self,X,y,metric,**kwargs):
-        y_pred = self.predict(X) 
-        return metric(y_true=y,y_pred=y_pred,**kwargs)
+        y_pred = self.predict(X)
+        sc = metric(y_true=y,y_pred=y_pred,**kwargs)
+        return sc
     
     def region_score(self,X,y,metric,reg_scorer,n_repeats=1,summary=True,**kwargs):
         if summary:

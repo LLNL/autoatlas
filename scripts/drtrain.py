@@ -44,6 +44,7 @@ def main():
     'epochs':[int,'Number of epochs.'],
     'batch':[int,'Batch size.'],
     'lr':[float,'Learning rate.'],
+    'wdcy':[float,'Weight decay.'],
     'load_epoch':[int,'Model epoch to load. If negative, does not load model.'],
     'in_chan':[int,'Number of channels in input image or volume.'],
     'in_dims':[str,'Dimensions separated by comma.'],
@@ -73,9 +74,9 @@ def main():
     #NN Model
     dims = [int(d) for d in ARGS['in_dims'].split(',')]
     if ARGS['load_epoch'] >= 0:
-        dirNN = DirPredNN(sizes=dims,data_chan=ARGS['in_chan'],batch=ARGS['batch'],lr=ARGS['lr'],cnn_chan=ARGS['cnn_chan'],cnn_depth=ARGS['cnn_depth'],device=ARGS['device'],load_ckpt_epoch=ARGS['load_epoch'],ckpt_file=ARGS['ckpt'],task=ARGS['task'])
+        dirNN = DirPredNN(sizes=dims,data_chan=ARGS['in_chan'],batch=ARGS['batch'],lr=ARGS['lr'],wdcy=ARGS['wdcy'],cnn_chan=ARGS['cnn_chan'],cnn_depth=ARGS['cnn_depth'],device=ARGS['device'],load_ckpt_epoch=ARGS['load_epoch'],ckpt_file=ARGS['ckpt'],task=ARGS['task'])
     elif ARGS['load_epoch'] == -1:
-        dirNN = DirPredNN(sizes=dims,data_chan=ARGS['in_chan'],batch=ARGS['batch'],lr=ARGS['lr'],cnn_chan=ARGS['cnn_chan'],cnn_depth=ARGS['cnn_depth'],device=ARGS['device'],ckpt_file=ARGS['ckpt'],task=ARGS['task'])
+        dirNN = DirPredNN(sizes=dims,data_chan=ARGS['in_chan'],batch=ARGS['batch'],lr=ARGS['lr'],wdcy=ARGS['wdcy'],cnn_chan=ARGS['cnn_chan'],cnn_depth=ARGS['cnn_depth'],device=ARGS['device'],ckpt_file=ARGS['ckpt'],task=ARGS['task'])
     else:
         raise ValueError('load_epoch must be greater than or equal to -1')
     

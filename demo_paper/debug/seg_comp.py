@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 import csv
 
 #tags = ['aa_freqs0_05','aa_smooth0_2_freqs0_05','aa_devr0_1','aa_smooth0_2_devr0_1']
-tags = ['aa_labs16_smooth0_1_devrr1_0_devrm0_8_uchan32_scroi']
+#tags = ['mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb16','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb8','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9']
+tags = ['znvol_labs16_smooth0_1_devrr1_0_roir0']
 mode = 'train'
 num_labels = 16
 
-smpl_list = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/subjects.txt'.format(mode)
+smpl_list = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}_zn/subjects.txt'.format(mode)
 #subjs = ['100307','100408','994273','995174']
 
 def read_csv(filen):
@@ -36,7 +37,7 @@ for tag in tags:
         os.makedirs(out_folder) 
     
     for sub in samples:
-        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/{}/{}/'.format(tag,mode,sub)
+        log_dir = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}/{}_zn/{}/'.format(tag,mode,sub)
 
         data = read_csv(os.path.join(log_dir,'olap_nmin.csv'))
         data_max.append(data.max(axis=1))

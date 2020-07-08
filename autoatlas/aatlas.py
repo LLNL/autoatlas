@@ -3,7 +3,6 @@ import os
 from autoatlas.cnn import UNet,AutoEnc
 from autoatlas.models import SegmRecon
 from torch.utils.data import DataLoader
-import progressbar
 import numpy as np
 import multiprocessing as mp
 import h5py
@@ -31,16 +30,11 @@ def partition_encode(seg,mask):
     return vol_meas,area_meas
 
 class CustomLoss:
-    def __init__(self,num_labels,sizes,rel_reg,smooth_reg,devr_reg,roi_reg,norm_pow,devr_mult,roi_mult,device):
-        print('CustomLoss: num_labels={},sizes={},rel_reg={},smooth_reg={},devr_reg={},roi_reg={},norm_pow={},devr_mult={},roi_mult={},device={}'.format(num_labels,sizes,rel_reg,smooth_reg,devr_reg,roi_reg,norm_pow,devr_mult,roi_mult,device))
+    def __init__(self,num_labels,sizes,norm_pow,devr_mult,roi_mult,device):
+        print('CustomLoss: num_labels={},sizes={},norm_pow={},devr_mult={},roi_mult={},device={}'.format(num_labels,sizes,norm_pow,devr_mult,roi_mult,device))
         self.dim = len(sizes)
         self.dimlist = [2+i for i in range(self.dim)]
         
-        self.rel_reg = rel_reg
-        self.smooth_reg = smooth_reg
-        self.devr_reg = devr_reg
-        self.roi_reg = roi_reg
-
         self.devr_mult = devr_mult
         self.min_freqs = self.devr_mult/num_labels
 
@@ -100,7 +94,7 @@ class CustomLoss:
         mse_losses = torch.sum(torch.stack(mse_losses,dim=-1),dim=-1)
 
         assert (not torch.isnan(mse_losses).any()),torch.isnan(mse_losses)
-        return self.rel_reg*torch.mean(mse_losses)
+        return torch.mean(mse_losses)
 
     def smooth_loss(self,seg,mask):
         nums,dens = [],[]
@@ -122,14 +116,14 @@ class CustomLoss:
         smooth_loss = torch.sum(torch.stack(nums,dim=-1),dim=-1)/torch.sum(torch.stack(dens,dim=-1),dim=-1)   
         smooth_loss = -torch.log(torch.sum(smooth_loss,dim=1))
         assert (not torch.isnan(smooth_loss).any()),torch.isnan(smooth_loss)
-        return self.smooth_reg*torch.mean(smooth_loss)
+        return torch.mean(smooth_loss)
 
     def devr_loss(self,seg,mask):
         clp = torch.sum(seg*mask,dim=self.dimlist)/torch.sum(mask,dim=self.dimlist)
         clp = -torch.log((clp+self.eps*self.min_freqs)/self.min_freqs)
         clp = torch.clamp(clp,min=0)
         assert (not torch.isnan(clp).any()),torch.isnan(clp)
-        return self.devr_reg*torch.mean(clp)
+        return torch.mean(clp)
 
     def roi_loss(self,seg,mask):
         seg = seg*mask
@@ -161,7 +155,7 @@ class CustomLoss:
         #lhood = torch.where(seg_sum>self.eps,torch.log(lhood),self.zero_tensor)
         #lhood = torch.log(lhood)
         assert (not torch.isnan(lhood).any()),torch.isnan(lhood)
-        return -self.roi_reg*torch.mean(lhood) 
+        return -torch.mean(lhood) 
 
 #    def entr_loss(self,seg,mask)
 #        if self.dim == 3:
@@ -259,7 +253,7 @@ class AutoAtlas:
             self.model = torch.nn.DataParallel(self.model,device_ids=devids)
             torch.backends.cudnn.benchmark = True
        
-        self.criterion = CustomLoss(num_labels=self.ARGS['num_labels'],sizes=self.ARGS['sizes'],rel_reg=self.ARGS['rel_reg'],smooth_reg=self.ARGS['smooth_reg'],devr_reg=self.ARGS['devr_reg'],roi_reg=self.ARGS['roi_reg'],norm_pow=self.ARGS['re_pow'],devr_mult=self.ARGS['devr_mult'],roi_mult=self.ARGS['roi_mult'],device=device)
+        self.criterion = CustomLoss(num_labels=self.ARGS['num_labels'],sizes=self.ARGS['sizes'],norm_pow=self.ARGS['re_pow'],devr_mult=self.ARGS['devr_mult'],roi_mult=self.ARGS['roi_mult'],device=device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=self.ARGS['lr']) 
         if ckpt_path is not None:
             self.model.load_state_dict(ckpt['model'])
@@ -299,7 +293,7 @@ class AutoAtlas:
                 roi_loss = self.criterion.roi_loss(norm_seg,mask_in)
             else:
                 roi_loss = torch.FloatTensor([0]).to(self.acc_dev)
-            tot_loss = mse_loss+smooth_loss+devr_loss+roi_loss
+            tot_loss = self.ARGS['rel_reg']*mse_loss+self.ARGS['smooth_reg']*smooth_loss+self.ARGS['devr_reg']*devr_loss+self.ARGS['roi_reg']*roi_loss
 
             #import pdb; pdb.set_trace()
             tot_loss.backward()
@@ -351,23 +345,23 @@ class AutoAtlas:
                 norm_seg = norm_seg.to(self.acc_dev)
                 data_out = [d.to(self.acc_dev) for d in data_out]         
 
-                if self.ARGS['rel_reg']>0:
-                    mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
-                else:
-                    mse_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                if self.ARGS['smooth_reg']>0:
-                    smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
-                else:
-                    smooth_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                if self.ARGS['devr_reg']>0:
-                    devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
-                else:
-                    devr_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                if self.ARGS['roi_reg']>0:
-                    roi_loss = self.criterion.roi_loss(norm_seg,mask_in)
-                else:
-                    roi_loss = torch.FloatTensor([0]).to(self.acc_dev)
-                tot_loss = mse_loss+smooth_loss+devr_loss+roi_loss
+                #if self.ARGS['rel_reg']>0:
+                mse_loss = self.criterion.mse_loss(data_in,data_out,norm_seg,mask_in)
+                #else:
+                #    mse_loss = torch.FloatTensor([0]).to(self.acc_dev)
+                #if self.ARGS['smooth_reg']>0:
+                smooth_loss = self.criterion.smooth_loss(norm_seg,mask_in)
+                #else:
+                #    smooth_loss = torch.FloatTensor([0]).to(self.acc_dev)
+                #if self.ARGS['devr_reg']>0:
+                devr_loss = self.criterion.devr_loss(norm_seg,mask_in)
+                #else:
+                #    devr_loss = torch.FloatTensor([0]).to(self.acc_dev)
+                #if self.ARGS['roi_reg']>0:
+                roi_loss = self.criterion.roi_loss(norm_seg,mask_in)
+                #else:
+                #    roi_loss = torch.FloatTensor([0]).to(self.acc_dev)
+                tot_loss = self.ARGS['rel_reg']*mse_loss+self.ARGS['smooth_reg']*smooth_loss+self.ARGS['devr_reg']*devr_loss+self.ARGS['roi_reg']*roi_loss
                 
                 batch_mse_loss = mse_loss.item()
                 batch_smooth_loss = smooth_loss.item()

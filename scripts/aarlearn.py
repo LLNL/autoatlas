@@ -4,7 +4,6 @@ import csv
 from autoatlas import Predictor
 from .cliargs import get_args
 from .rlargs import RLEARN_ARGS
-from .cliargs import HELP_MSG_DICT as HELP
 
 def get_dataIO(in_file,out_file,smpl_list,target,task_type):
     samples = []
@@ -32,10 +31,10 @@ def get_dataIO(in_file,out_file,smpl_list,target,task_type):
                     data_out.append(row[1]) 
 
     assert len(data_in)==len(data_out),'len(data_in)={},len(data_out)={}'.format(len(data_in),len(data_out))
-    data_in = np.stack(data_in,axis=0)
+    data_in = np.stack(data_in,axis=0).astype(float)
     data_out = np.stack(data_out,axis=0)
     if task_type == 'regression':
-        data_out = data_out.astype(float) 
+        data_out = data_out.astype(float)
     return data_in,data_out,samples 
             
 def write_csv(mlm,summ_file,pred_file,subj,gtruth,pred,score,regsc,append=False):
@@ -54,10 +53,11 @@ def write_csv(mlm,summ_file,pred_file,subj,gtruth,pred,score,regsc,append=False)
         csv_data['ML method'].append('score {}'.format(k))
         csv_data[mlm].append('{:.6e}'.format(score[k]))
 
-    for k in regsc.keys():
-        for i in range(len(regsc[k])):
-            csv_data['ML method'].append('fv{} imp {}'.format(i,k))       
-            csv_data[mlm].append('{:.6e}'.format(regsc[k][i]))
+    if regsc is not None:
+        for k in regsc.keys():
+            for i in range(len(regsc[k])):
+                csv_data['ML method'].append('fv{} imp {}'.format(i,k))       
+                csv_data[mlm].append('{:.6e}'.format(regsc[k][i]))
  
     with open(summ_file,'w',newline='') as csv_file:
         writer = csv.DictWriter(csv_file,fieldnames=csv_data.keys())
@@ -78,7 +78,16 @@ def write_csv(mlm,summ_file,pred_file,subj,gtruth,pred,score,regsc,append=False)
                         csv_data[k].append(val)
 
         csv_data['ML method'] = ['pred','gtruth']
-        csv_data[mlm] = ['{:.6e}'.format(pred[idx]),'{:.6e}'.format(gtruth[idx])]
+        csv_data[mlm] = []
+        if isinstance(pred[idx],str):
+            csv_data[mlm].append('{}'.format(pred[idx]))
+        else:
+            csv_data[mlm].append('{:.6e}'.format(pred[idx]))
+        
+        if isinstance(pred[idx],str):
+            csv_data[mlm].append('{}'.format(gtruth[idx]))
+        else:
+            csv_data[mlm].append('{:.6e}'.format(gtruth[idx]))
             
         with open(pred_file.format(ID),'w',newline='') as csv_file:
             writer = csv.DictWriter(csv_file,fieldnames=csv_data.keys())
@@ -87,44 +96,57 @@ def write_csv(mlm,summ_file,pred_file,subj,gtruth,pred,score,regsc,append=False)
                 writer.writerow({k:csv_data[k][i] for k in csv_data.keys()})
          
 def main():
-    extra_args = {'target':[str,HELP['target_rlearn']],
-    'task':[str,HELP['task_rlearn']],
-    'train_in':[str,HELP['train_in_rlearn']],
-    'train_out':[str,HELP['train_out_rlearn']],
-    'train_list':[str,HELP['train_list']],
-    'train_pred':[str,HELP['train_pred_rlearn']],
-    'train_summ':[str,HELP['train_summ_rlearn']],
-    'test_in':[str,HELP['test_in_rlearn']],
-    'test_out':[str,HELP['test_out_rlearn']],
-    'test_list':[str,HELP['test_list']],
-    'test_pred':[str,HELP['test_pred_rlearn']],
-    'test_summ':[str,HELP['test_summ_rlearn']]}
+    extra_args = {'target':[str,'Name of parameter to be predicted.'],
+    'task':[str,'Choose between regression or classification.'],
+    'train_in':[str,'Filename of input features for training.'],
+    'train_out':[str,'Filename of output targets for training.'],
+    'train_list':[str,'File containing list of training samples.'],
+    'train_pred':[str,'File to store predicted values from train.'],
+    'train_summ':[str,'File to store ML performance metrics from train.'],
+    'test_in':[str,'Filename of input features for testing.'],
+    'test_out':[str,'Filename of output targets for testing.'],
+    'test_list':[str,'File containing list of testing samples.'],
+    'test_pred':[str,'File to store predicted values from test.'],
+    'test_summ':[str,'File to store ML performance metrics from test.'],
+    'no_frank':[bool,'If True, do not compute feature ranks.']
+    }
     ARGS = get_args(extra_args)
-   
+ 
     train_in,train_out,train_subj = get_dataIO(ARGS['train_in'],ARGS['train_out'],ARGS['train_list'],ARGS['target'],ARGS['task'])
     test_in,test_out,test_subj = get_dataIO(ARGS['test_in'],ARGS['test_out'],ARGS['test_list'],ARGS['target'],ARGS['task'])
 
-    for i,rlarg in enumerate(RLEARN_ARGS):
+    pred_idx = 0
+    for rlarg in RLEARN_ARGS:
         if ARGS['task'] == rlarg['task']:
+            print(rlarg)
             np.random.seed(0)
 
             ptor = Predictor(rlarg['estimator'])
             ptor.train(train_in,train_out)
 
             train_pred = ptor.predict(train_in)
-            train_score,train_regsc = {},{}
+            train_score = {}
             for key,met in rlarg['scorers'].items():
                 train_score[key] = ptor.score(train_in,train_out,met)
-            for key,rsc in rlarg['feature_scorers'].items():
-                train_regsc[key] = ptor.region_score(train_in,train_out,rlarg['scorers'][key],rsc,n_repeats=100)
-            write_csv(rlarg['tag'],ARGS['train_summ'],ARGS['train_pred'],train_subj,train_out,train_pred,train_score,train_regsc,i!=0)
+            if not ARGS['no_frank']:
+                train_regsc = {}
+                for key,rsc in rlarg['feature_scorers'].items():
+                    train_regsc[key] = ptor.region_score(train_in,train_out,rlarg['scorers'][key],rsc,n_repeats=100)
+            else:
+                train_regsc = None
+            write_csv(rlarg['tag'],ARGS['train_summ'],ARGS['train_pred'],train_subj,train_out,train_pred,train_score,train_regsc,pred_idx!=0)
 
             test_pred = ptor.predict(test_in)
-            test_score,test_regsc = {},{}
+            test_score = {}
             for key,met in rlarg['scorers'].items():
                 test_score[key] = ptor.score(test_in,test_out,met)
-            for key,rsc in rlarg['feature_scorers'].items():
-                test_regsc[key] = ptor.region_score(test_in,test_out,rlarg['scorers'][key],rsc,n_repeats=100)
-            write_csv(rlarg['tag'],ARGS['test_summ'],ARGS['test_pred'],test_subj,test_out,test_pred,test_score,test_regsc,i!=0)
+            if not ARGS['no_frank']:
+                test_regsc = {}
+                for key,rsc in rlarg['feature_scorers'].items():
+                    test_regsc[key] = ptor.region_score(test_in,test_out,rlarg['scorers'][key],rsc,n_repeats=100)
+            else:
+                test_regsc = None
+            write_csv(rlarg['tag'],ARGS['test_summ'],ARGS['test_pred'],test_subj,test_out,test_pred,test_score,test_regsc,pred_idx!=0)
+            pred_idx = pred_idx+1
 
 

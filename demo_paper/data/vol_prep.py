@@ -10,13 +10,14 @@ np.random.seed(0)
 
 mri_folder = '/p/lustre1/hcpdata/processed/T1_decimate/2mm'
 tt_folder = '/p/lustre1/hcpdata/processed/5TT/seg_flip/2mm'
-train_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_nm'
-test_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/test_nm'
+train_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/train_zn'
+test_folder = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/test_zn'
 dims = [96,96,96]
 train_num = 80 #percent
 #stdev = 286.318
-mean = 698.45
-stddev = 165.27 
+#mean = 698.45
+#stddev = 165.27 
+#maxm = 1116.786
 
 if not os.path.exists(train_folder):
     os.makedirs(train_folder)
@@ -69,12 +70,8 @@ def save_orgdata(in_files,out_folder):
         t1sh = vol.shape
         vol = adjust_dims(vol)
         thresh = threshold_otsu(montage(vol,grid_shape=(1,vol.shape[0])))
-        mask = (vol <= thresh/1.5)
-        
-        vol = (vol-mean)/stddev
-        out_filen = os.path.join(out_ftemp,'T1.nii.gz'.format(ID))
-        save_nifti(out_filen,vol.astype(np.float32),aff,head)
-        
+        mask = (vol < thresh/1.5)
+ 
         labs = cc3d.connected_components(mask)
         uniqs = np.unique(labs)
         max_counts,max_label = 0,0
@@ -87,6 +84,12 @@ def save_orgdata(in_files,out_folder):
         out_filen = os.path.join(out_ftemp,'mask.nii.gz'.format(ID)) 
         save_nifti(out_filen,mask,aff,head)
 
+        mean,stddev = np.mean(vol[mask==1.0]),np.std(vol[mask==1.0])       
+        vol = (vol-mean)/stddev
+        #vol = vol/maxm
+        out_filen = os.path.join(out_ftemp,'T1.nii.gz'.format(ID))
+        save_nifti(out_filen,vol.astype(np.float32),aff,head)
+        
         vol,_,_ = get_data(os.path.join(tt_folder,'{}-tissue_2mm.nii.gz'.format(ID)))
         assert vol.shape==t1sh
 

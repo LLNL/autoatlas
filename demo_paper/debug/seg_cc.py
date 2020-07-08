@@ -5,12 +5,12 @@ import matplotlib.pyplot as plt
 import csv
 import cc3d
 
-#tags = ['aa_freqs0_05','aa_smooth0_2_freqs0_05','aa_devr0_1','aa_smooth0_2_devr0_1']
-tags = ['aa_labs16_smooth0_1_devrr1_0_devrm0_8_uchan32_scroi']
+tags = ['znvol_labs16_smooth0_1_devrr1_0_roir0']
+#tags = ['mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb16','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb8','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9']
 mode = 'train'
-num_labels = [16]
+num_labels = [16,16,16]
 
-smpl_list = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/subjects.txt'.format(mode)
+smpl_list = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}_zn/subjects.txt'.format(mode)
 #subjs = ['100307','100408','994273','995174']
 
 def read_csv(filen):
@@ -57,11 +57,11 @@ for idx,tag in enumerate(tags):
         os.makedirs(out_folder) 
     
     for sub in samples:
-        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/{}/{}/'.format(tag,mode,sub)
+        log_dir = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}/{}_zn/{}/'.format(tag,mode,sub)
         seg = nib.load(os.path.join(log_dir,'seg_vol.nii.gz')).get_fdata()
         seg = seg.astype(np.uint32)
 
-        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/{}/'.format(mode,sub)
+        log_dir = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}_zn/{}/'.format(mode,sub)
         mask = nib.load(os.path.join(log_dir,'mask.nii.gz')).get_fdata()
         mask = mask.astype(bool)
         T1 = nib.load(os.path.join(log_dir,'T1.nii.gz')).get_fdata()
@@ -76,9 +76,12 @@ for idx,tag in enumerate(tags):
             counts = []  
             for u in uniq:
                 counts.append(np.sum(seg_labs==u))
-            max_counts.append(max(counts)/sum(counts))
-        #print([float('{:.2f}'.format(cnt)) for cnt in max_counts])
-            if max_counts[-1] < 0.9: 
+            if len(counts)==0:
+                max_counts.append(np.nan)
+            else:
+                max_counts.append(max(counts)/sum(counts))
+        print([float('{:.2f}'.format(cnt)) for cnt in max_counts])
+        """    if max_counts[-1] < 0.9: 
                 vol = labs.copy()
                 vol[seg!=l] = 0
                 vol[mask==False] = 0
@@ -93,5 +96,5 @@ for idx,tag in enumerate(tags):
                 img = overlay(T1[:,:,48],vol[:,:,48])
                 plt.imshow(img,cmap='gray')
                 plt.colorbar()
-                plt.show()
-        print([float('{:.2f}'.format(cnt)) for cnt in max_counts])
+                plt.show()"""
+        #print([float('{:.2f}'.format(cnt)) for cnt in max_counts])

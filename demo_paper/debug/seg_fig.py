@@ -3,7 +3,8 @@ import os
 import nibabel as nib
 import matplotlib.pyplot as plt
 
-tags = ['aa_labs16_smooth0_1_devrr1_0_devrm0_8_uchan32_scroi']
+#tags = ['lass_labs16_smooth0_1_devrr10_0_roir0','lass_labs16_smooth0_01_devrr10_0_roir0','lass_labs16_smooth0_05_devrr5_0_roir0']
+tags = ['mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb16','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb8','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9']
 subjs = ['100307','100408','994273','995174']
 num_labels = 16
 
@@ -23,11 +24,11 @@ for tag in tags:
         if not os.path.exists(out_folder):
             os.makedirs(out_folder) 
 
-        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/train/{}/'.format(tag,sub)
+        log_dir = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}/train/{}/'.format(tag,sub)
         seg = nib.load(os.path.join(log_dir,'seg_vol.nii.gz')).get_fdata()
         rec = nib.load(os.path.join(log_dir,'rec_vol.nii.gz')).get_fdata()
         prob = nib.load(os.path.join(log_dir,'prob_vol.nii.gz')).get_fdata()
-        log_dir = '/p/lustre1/mohan3/Data/TBI/HCP/2mm/{}/train/{}/'.format('',sub)
+        log_dir = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}/train/{}/'.format('',sub)
         T1 = nib.load(os.path.join(log_dir,'T1.nii.gz')).get_fdata()
         mask = nib.load(os.path.join(log_dir,'mask.nii.gz')).get_fdata()
 
