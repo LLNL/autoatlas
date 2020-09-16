@@ -31,10 +31,6 @@ means,stds,row = [],[],''
 for tag in tags:
     print('Processing tag {}'.format(tag))
     data_mat = []
-    out_folder = os.path.join('figs',tag)
-    if not os.path.exists(out_folder):
-        os.makedirs(out_folder) 
-    
     for sub in samples:
         log_dir = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/{}/test_mx/{}/'.format(tag,sub)
         mask_dir = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/test_mx/{}/'.format(sub)
@@ -48,11 +44,11 @@ for tag in tags:
     data_mat = np.stack(data_mat,axis=0)
     means.append(np.mean(data_mat,axis=0))
     stds.append(np.std(data_mat,axis=0))
-    row += '& TT1 & TT2 & TT3 & TT4 '
+    row += '& $TT_0$ & $TT_1$ & $TT_2$ & $TT_3$ '
 print(row+'\\\\\\hline')
 
 for i in range(num_labels):
-    row = 'AA{}'.format(i)
+    row = '$AA_{{{}}}$'.format(i)
     for tidx in range(len(tags)):
         for j in range(means[tidx].shape[1]):
             if means[tidx][i,j] > 1:

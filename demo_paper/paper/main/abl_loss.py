@@ -5,7 +5,7 @@ import nibabel as nib
 import matplotlib.pyplot as plt
 #from scipy.stats import entropy as scipy_entropy
 
-tag_list = ['mxvol_labs16_relr0_0_smooth0_005_devrr0_1_devrm0_9','mxvol_labs16_smooth0_0_devrr0_1_devrm0_9','mxvol_labs16_smooth0_005_devrr0_0_devrm0_9','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9']
+tag_list = ['mxvol_labs16_relr0_0_smooth0_005_devrr0_1_devrm0_9_emb16','mxvol_labs16_smooth0_0_devrr0_1_devrm0_9_emb16','mxvol_labs16_smooth0_005_devrr0_0_devrm0_9_emb16','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb16']
 rel_reg = [0.0,1.0,1.0,1.0]
 smooth_reg = [0.005,0.0,0.005,0.005]
 devr_reg = [0.1,0.1,0.0,0.1]

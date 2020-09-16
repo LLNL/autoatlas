@@ -19,7 +19,8 @@ class Predictor:
         self.scaler_y.fit(y)
         y = self.scaler_y.transform(y) 
 
-        self.estor.fit(X,y.ravel()) 
+        self.estor.fit(X,y.ravel())
+        print('Best params is {}'.format(self.estor.best_params_))
 
     def predict(self,X):
         assert len(X.shape)==3,'in_data must have three dimensions'

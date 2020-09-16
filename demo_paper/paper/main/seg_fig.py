@@ -9,7 +9,7 @@ save_dirs = ['emb4','emb8','emb16']
 subjs = ['100206','131924','162329','200614','562446','702133']
 num_labels = 16
 
-rgb_list = np.array([[128,0,0],[0,0,128],[128,128,0],[0,128,128],[128,128,128],[255,255,255],[170,110,40],[230,25,75],[245,130,48],[255,255,25],[210,245,60],[60,180,75],[70,240,240],[0,130,200],[145,30,180],[240,50,230]]).astype(np.uint8)[:num_labels]
+rgb_list = np.array([[128,128,128],[70,240,240],[255,255,255],[230,25,75],[0,0,128],[128,128,0],[0,128,128],[170,110,40],[245,130,48],[255,255,25],[128,0,0],[210,245,60],[60,180,75],[0,130,200],[145,30,180],[240,50,230]]).astype(np.uint8)[:num_labels]
 
 def save_fig(arr,filen,cmap=None,out_dir='./'):
     plt.imshow(arr,cmap=cmap)
@@ -59,9 +59,9 @@ for tidx,tag in enumerate(tags):
         save_fig(rec[:,:,sh[2]//2],'rec_x.png',out_dir=out_folder)
 
         T1 = np.transpose(T1,axes=(2,0,1))[::-1]
-        save_fig(T1[sh[0]//2],'T1_z.png',out_dir=out_folder)
-        save_fig(T1[:,sh[1]//2],'T1_y.png',out_dir=out_folder)
-        save_fig(T1[:,:,sh[2]//2],'T1_x.png',out_dir=out_folder)
+        save_fig(T1[sh[0]//2],'T1_z.png',out_dir=out_folder,cmap='gray')
+        save_fig(T1[:,sh[1]//2],'T1_y.png',out_dir=out_folder,cmap='gray')
+        save_fig(T1[:,:,sh[2]//2],'T1_x.png',out_dir=out_folder,cmap='gray')
         
         TT5rgb = np.transpose(TT5rgb,axes=(2,0,1,3))[::-1]
         save_fig(TT5rgb[sh[0]//2],'tt5_z.png',out_dir=out_folder)
@@ -69,6 +69,6 @@ for tidx,tag in enumerate(tags):
         save_fig(TT5rgb[:,:,sh[2]//2],'tt5_x.png',out_dir=out_folder)
         
         mask = np.transpose(mask,axes=(2,0,1))[::-1]
-        save_fig(mask[sh[0]//2],'mask_z.png',out_dir=out_folder)
-        save_fig(mask[:,sh[1]//2],'mask_y.png',out_dir=out_folder)
-        save_fig(mask[:,:,sh[2]//2],'mask_x.png',out_dir=out_folder)
+        save_fig(mask[sh[0]//2],'mask_z.png',out_dir=out_folder,cmap='gray')
+        save_fig(mask[:,sh[1]//2],'mask_y.png',out_dir=out_folder,cmap='gray')
+        save_fig(mask[:,:,sh[2]//2],'mask_x.png',out_dir=out_folder,cmap='gray')

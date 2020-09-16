@@ -17,7 +17,7 @@ def bacc_scorer(y_true,y_pred):
 RLEARN_ARGS = [
     {'task':'regression',
      'estimator':GridSearchCV(estimator=linear_model.Ridge(random_state=0,solver='lsqr'),
-                        param_grid={'alpha':[10**N for N in range(-5,6)]},
+                        param_grid={'alpha':[10**N for N in np.arange(-5,6,0.25)]},
                         scoring=metrics.make_scorer(metrics.r2_score,greater_is_better=True),
                         n_jobs=-1,refit=True,cv=3),
      'scorers':{'r2':metrics.r2_score,'mae':metrics.mean_absolute_error,'mape':perc_error},
@@ -25,17 +25,8 @@ RLEARN_ARGS = [
      'tag':'lin'},
 
     {'task':'regression',
-     'estimator':GridSearchCV(estimator=svm.SVR(gamma='auto'),
-                        param_grid={'C':[10**N for N in range(-5,6)]},
-                        scoring=metrics.make_scorer(metrics.r2_score,greater_is_better=True),
-                        n_jobs=-1,refit=True,cv=3),
-     'scorers':{'r2':metrics.r2_score,'mae':metrics.mean_absolute_error,'mape':perc_error},
-     'feature_scorers':{'mae':reg_scorer}, 
-     'tag':'svm'},
-
-    {'task':'regression',
      'estimator':GridSearchCV(estimator=neighbors.KNeighborsRegressor(),
-                        param_grid={'n_neighbors':[2**N for N in range(8)]},
+                        param_grid={'n_neighbors':list(set([int(2**N) for N in np.arange(0,8,0.25)]))},
                         scoring=metrics.make_scorer(metrics.r2_score,greater_is_better=True),
                         n_jobs=-1,refit=True,cv=3),
      'scorers':{'r2':metrics.r2_score,'mae':metrics.mean_absolute_error,'mape':perc_error},
@@ -43,9 +34,18 @@ RLEARN_ARGS = [
      'tag':'nneigh'},
 
     {'task':'regression',
+     'estimator':GridSearchCV(estimator=svm.SVR(gamma='auto'),
+                        param_grid={'C':[10**N for N in np.arange(-5,6,0.25)]},
+                        scoring=metrics.make_scorer(metrics.r2_score,greater_is_better=True),
+                        n_jobs=-1,refit=True,cv=3),
+     'scorers':{'r2':metrics.r2_score,'mae':metrics.mean_absolute_error,'mape':perc_error},
+     'feature_scorers':{'mae':reg_scorer}, 
+     'tag':'svm'},
+
+    {'task':'regression',
      'estimator':GridSearchCV(estimator=
                 neural_network.MLPRegressor(random_state=0,hidden_layer_sizes=(4,2),max_iter=1e5,solver='lbfgs'),
-                param_grid={'alpha':[10**N for N in range(-5,6)]},
+                param_grid={'alpha':[10**N for N in np.arange(-5,6,0.25)]},
                 scoring=metrics.make_scorer(metrics.r2_score,greater_is_better=True),
                 n_jobs=-1,refit=True,cv=3),
      'scorers':{'r2':metrics.r2_score,'mae':metrics.mean_absolute_error,'mape':perc_error},
@@ -55,7 +55,7 @@ RLEARN_ARGS = [
     {'task':'classification',
      'estimator':GridSearchCV(estimator=
         linear_model.LogisticRegression(random_state=0,solver='lbfgs',max_iter=1e5,multi_class='multinomial'),
-        param_grid={'C':[10**N for N in range(-5,6)]},
+        param_grid={'C':[10**N for N in np.arange(-5,6,0.25)]},
         scoring=metrics.make_scorer(metrics.accuracy_score,greater_is_better=True),
         n_jobs=-1,refit=True,cv=3),
      'scorers':{'acc':metrics.accuracy_score,'roc':metrics.roc_auc_score},
@@ -64,7 +64,7 @@ RLEARN_ARGS = [
 
     {'task':'classification',
      'estimator':GridSearchCV(estimator=svm.SVC(gamma='auto',random_state=0),
-        param_grid={'C':[10**N for N in range(-5,6)]},
+        param_grid={'C':[10**N for N in np.arange(-5,6,0.25)]},
         scoring=metrics.make_scorer(metrics.accuracy_score,greater_is_better=True),
         n_jobs=-1,refit=True,cv=3),
      'scorers':{'acc':metrics.accuracy_score,'roc':metrics.roc_auc_score},
@@ -73,7 +73,7 @@ RLEARN_ARGS = [
 
     {'task':'classification',
      'estimator':GridSearchCV(estimator=neighbors.KNeighborsClassifier(),
-        param_grid={'n_neighbors':[2**N for N in range(8)]},
+        param_grid={'n_neighbors':list(set([int(2**N) for N in np.arange(0,8,0.25)]))},
         scoring=metrics.make_scorer(metrics.accuracy_score,greater_is_better=True),
         n_jobs=-1,refit=True,cv=3),
      'scorers':{'acc':metrics.accuracy_score,'roc':metrics.roc_auc_score},
@@ -83,7 +83,7 @@ RLEARN_ARGS = [
     {'task':'classification',
      'estimator':GridSearchCV(estimator=
             neural_network.MLPClassifier(hidden_layer_sizes=(4,2),max_iter=1e5,solver='lbfgs',random_state=0),
-            param_grid={'alpha':[10**N for N in range(-5,6)]},
+            param_grid={'alpha':[10**N for N in np.arange(-5,6,0.25)]},
             scoring=metrics.make_scorer(metrics.accuracy_score,greater_is_better=True),
             n_jobs=-1,refit=True,cv=3),
      'scorers':{'acc':metrics.accuracy_score,'roc':metrics.roc_auc_score},
