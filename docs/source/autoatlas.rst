@@ -1,53 +1,67 @@
-autoatlas package
+autoatlas Package
 =================
 
-Submodules
-----------
+:mod:`_cnn` Module
+------------------
 
-autoatlas.aatlas module
------------------------
+.. automodule:: autoatlas._cnn
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
-.. automodule:: autoatlas.aatlas
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-autoatlas.analyze module
-------------------------
-
-.. automodule:: autoatlas.analyze
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-autoatlas.data module
+:mod:`_models` Module
 ---------------------
 
-.. automodule:: autoatlas.data
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. automodule:: autoatlas._models
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
-autoatlas.dirnn module
-----------------------
+:mod:`_utils` Module
+--------------------
+
+.. automodule:: autoatlas._utils
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`aatlas` Module
+--------------------
+
+.. automodule:: autoatlas.aatlas
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`analyze` Module
+---------------------
+
+.. automodule:: autoatlas.analyze
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`data` Module
+------------------
+
+.. automodule:: autoatlas.data
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`dirnn` Module
+-------------------
 
 .. automodule:: autoatlas.dirnn
-   :members:
-   :undoc-members:
-   :show-inheritance:
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
-autoatlas.rlearn module
------------------------
+:mod:`rlearn` Module
+--------------------
 
 .. automodule:: autoatlas.rlearn
-   :members:
-   :undoc-members:
-   :show-inheritance:
+    :members:
+    :undoc-members:
+    :show-inheritance:
 
-Module contents
----------------
-
-.. automodule:: autoatlas
-   :members:
-   :undoc-members:
-   :show-inheritance:
