@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import csv
 import nibabel as nib
 
-tags = ['mxvol_labs16_smooth0_005_devrr0_1_devrm0_9','mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb16']
-save_dirs = ['emb4','emb16']
+tags = ['mxvol_labs16_smooth0_005_devrr0_1_devrm0_9_emb16']
+save_dirs = ['emb16']
 num_labels = 16
 
 smpl_list = '/p/gpfs1/mohan3/Data/TBI/HCP/2mm/test_mx/subjects.txt'

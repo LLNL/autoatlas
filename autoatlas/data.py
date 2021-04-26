@@ -6,6 +6,7 @@ from skimage.filters import threshold_otsu
 import os
 import torch
 from torch.utils.data import Dataset
+from PIL import Image
 
 class NibData(Dataset):
     def __init__(self,data_files,mask_files,targets=None,task='regression',labels=None):
@@ -41,3 +42,24 @@ class NibData(Dataset):
             
 #TEMPORARY: SHOULD INCLUDE CODE TO CHECK SAME METADATA FOR MASK AND DATA FILES IN DATA READER
 
+class ImageData(Dataset):
+    def __init__(self, data_files, mask_files):
+        assert len(mask_files)==len(data_files)
+        self.data_files = data_files
+        self.mask_files = mask_files
+        
+    def __len__(self):
+        return len(self.data_files)
+    
+    def __getitem__(self, idx):
+        data_filen = self.data_files[idx]
+        data_img = np.asarray(Image.open(data_filen)) 
+        mask_filen = self.mask_files[idx]
+        mask_img = np.asarray(Image.open(mask_filen)) 
+   
+        assert data_img.shape==mask_img.shape
+        assert data_img.ndim==2
+ 
+        data_img = torch.unsqueeze(torch.from_numpy(data_img), dim=0)
+        mask_img = torch.unsqueeze(torch.from_numpy(mask_img), dim=0)
+        return data_img.float(),mask_img.float(),data_filen,mask_filen

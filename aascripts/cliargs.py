@@ -82,7 +82,7 @@ def update_if_false(ARGS,label,cfg_obj,parser):
         else:
             return False
 
-def get_args(ARGS_inp):
+def get_parser(ARGS_inp, ret_dict):
     ARGS_dict = {'cli_args':[str,'File containing all command line input arguments.'],
                  'cli_save':[str,'File to save CLI arguments.']}
     if ARGS_inp is not None:
@@ -94,11 +94,17 @@ def get_args(ARGS_inp):
             parser.add_argument('--{}'.format(key),default=None,type=dtype,help=h)
         else:
             parser.add_argument('--{}'.format(key),action='store_true',help=h)
+    if ret_dict:
+        return parser, ARGS_dict
+    else:
+        return parser
+
+def get_args(parser, ARGS_labs):
     ARGS_inp = vars(parser.parse_args())
     
     config = cp.ConfigParser()
     config.read(ARGS_inp['cli_args'])
-    for key,(dtype,h) in ARGS_dict.items():
+    for key,(dtype,h) in ARGS_labs.items():
         if dtype is bool: 
             ARGS_inp[key] = update_if_false(ARGS_inp,key,config,parser)
         else:

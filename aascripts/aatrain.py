@@ -1,13 +1,12 @@
-from autoatlas import AutoAtlas
-from autoatlas.data import NibData
+from autoatlas.aatlas import AutoAtlas
 import os
 import csv
-from .cliargs import get_args,write_args
-from .cliargs import HELP_MSG_DICT as HELP
-from .utils import get_dataset,get_samples
 import numpy as np
+from aascripts.cliargs import get_parser,get_args,write_args
+from aascripts.cliargs import HELP_MSG_DICT as HELP
+from aascripts.utils import get_dataset,get_samples
 
-def main():
+def aatrain_parser(ret_dict=False):
     ARGS_dict = {
             'train_in':[str,'Filename of input volumes for training autoatlas.'],
             'train_mask':[str,'Filename of masks for input volumes in training set.'],
@@ -38,22 +37,24 @@ def main():
             'devr_mult':[float,'Multiple of minimum volume of each region.'],
             'roi_mult':[float,'Multiple of minimum spheretical region of influence.'],
             }
+    return get_parser(ARGS_dict, ret_dict)
 
-    ARGS = get_args(ARGS_dict)
+def main():
+    ARGS = get_args(*aatrain_parser(ret_dict=True))
     if not os.path.exists(ARGS['cli_args']):
         raise ValueError('{} not found'.format(ARGS['cli_args']))
         
     write_args(ARGS,ARGS['cli_save'])
+    
+    #NN Model
+    dims = [int(d) for d in ARGS['in_dims'].split(',')]
 
     #Datasets
     samples = get_samples(ARGS['train_list']) 
-    train_data,_,_ = get_dataset(samples,ARGS['train_in'],ARGS['train_mask'])
+    train_data,_,_ = get_dataset(samples,len(dims),ARGS['train_in'],ARGS['train_mask'])
     if ARGS['test_list'] is not None:
         samples = get_samples(ARGS['test_list']) 
-        test_data,_,_ = get_dataset(samples,ARGS['test_in'],ARGS['test_mask'])
-
-    #NN Model
-    dims = [int(d) for d in ARGS['in_dims'].split(',')]
+        test_data,_,_ = get_dataset(samples,len(dims),ARGS['test_in'],ARGS['test_mask'])
 
     if ARGS['load_epoch'] >= 0:
         autoseg = AutoAtlas(ARGS['num_labels'],sizes=dims,data_chan=ARGS['in_chan'],rel_reg=ARGS['rel_reg'],smooth_reg=ARGS['smooth_reg'],devr_reg=ARGS['devr_reg'],roi_reg=ARGS['roi_reg'],devr_mult=ARGS['devr_mult'],roi_mult=ARGS['roi_mult'],batch=ARGS['batch'],lr=ARGS['lr'],unet_chan=ARGS['unet_chan'],unet_blocks=ARGS['unet_blocks'],unet_layblk=ARGS['unet_layblk'],aenc_chan=ARGS['aenc_chan'],aenc_depth=ARGS['aenc_depth'],re_pow=ARGS['re_pow'],distr=ARGS['distr'],device='cuda',load_ckpt_epoch=ARGS['load_epoch'],ckpt_file=ARGS['ckpt'])

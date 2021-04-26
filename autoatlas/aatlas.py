@@ -1,37 +1,59 @@
+"""
+Classes and function definitions related to AutoAtlas.
+"""
+
 import torch
 import os
-from autoatlas.cnn import UNet,AutoEnc
-from autoatlas.models import SegmRecon
+from autoatlas._cnn import _UNet,_AutoEnc
+from autoatlas._models import _SegmRecon
 from torch.utils.data import DataLoader
 import numpy as np
 import multiprocessing as mp
 import h5py
 
-def partition_encode(seg,mask):
-    neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
-          [1,-1,-1],[1,-1,0],[1,-1,1],
-          [1,0,-1], [1,0,0], [1,0,1],
-          [1,1,-1], [1,1,0], [1,1,1]]
+def partition_encode(seg, mask, dim):
+    """
+    Encode each partition using two normalized measures of its volume and surface area.
+
+    Args:
+        seg (numpy.ndarray): Array with `dim+1` dimensions that contain the softmax probability scores over the partition labels at each voxel/pixel. The first dimension is for the softmax scores.
+        mask (numpy.ndarray): Boolean array with `dim` dimensions indicating whether a voxel is foreground or background.
+        dim (int): Number of dimensions of data to be partitioned.
+    """
+    dimlist = tuple(int(1+i) for i in range(dim))
+    if dim==3:
+        neighs = [[0,0,1],  [0,1,-1],[0,1,0], [0,1,1],
+                   [1,-1,-1],[1,-1,0],[1,-1,1],
+                   [1,0,-1], [1,0,0], [1,0,1],
+                   [1,1,-1], [1,1,0], [1,1,1]]
+    elif dim==2:
+        neighs = [[0,1,np.nan],[1,-1,np.nan],[1,0,np.nan],[1,1,np.nan]]
+    else:
+        raise ValueError('dim must be either 2 or 3')
+
     nums,dens = [],[]
     mask = mask[np.newaxis]
     for (Nz,Ny,Nx) in neighs:
         H = np.concatenate((seg[:,-Nz:],seg[:,:-Nz]),axis=1)
         H = np.concatenate((H[:,:,-Ny:],  H[:,:,:-Ny]),   axis=2)
-        H = np.concatenate((H[:,:,:,-Nx:],H[:,:,:,:-Nx]), axis=3)
+        if dim==3:
+            H = np.concatenate((H[:,:,:,-Nx:],H[:,:,:,:-Nx]), axis=3)
         H = seg*H
         W = np.concatenate((mask[:,-Nz:],  mask[:,:-Nz]), axis=1)
         W = np.concatenate((W[:,:,-Ny:],  W[:,:,:-Ny]),   axis=2)
-        W = np.concatenate((W[:,:,:,-Nx:],W[:,:,:,:-Nx]), axis=3)
+        if dim==3:
+            W = np.concatenate((W[:,:,:,-Nx:],W[:,:,:,:-Nx]), axis=3)
         W = mask*W
-        nums.append(np.sum(H*W,axis=(1,2,3)))
-        dens.append(np.sum(W,axis=(1,2,3)))
+        nums.append(np.sum(H*W,axis=dimlist))
+        dens.append(np.sum(W,axis=dimlist))
     area_meas = np.sum(np.stack(nums,axis=-1),axis=-1)/np.sum(np.stack(dens,axis=-1),axis=-1) 
-    vol_meas = np.sum(seg*mask,axis=(1,2,3))/np.sum(mask,axis=(1,2,3))
+    vol_meas = np.sum(seg*mask,axis=dimlist)/np.sum(mask,axis=dimlist)
     return vol_meas,area_meas
 
-class CustomLoss:
+class _CustomLoss:
     def __init__(self,num_labels,sizes,norm_pow,devr_mult,roi_mult,device):
-        print('CustomLoss: num_labels={},sizes={},norm_pow={},devr_mult={},roi_mult={},device={}'.format(num_labels,sizes,norm_pow,devr_mult,roi_mult,device))
+        super(_CustomLoss, self).__init__() 
+        print('_CustomLoss: num_labels={},sizes={},norm_pow={},devr_mult={},roi_mult={},device={}'.format(num_labels,sizes,norm_pow,devr_mult,roi_mult,device))
         self.dim = len(sizes)
         self.dimlist = [2+i for i in range(self.dim)]
         
@@ -45,7 +67,7 @@ class CustomLoss:
             self.roi_radft = self.roi_mult*((1.0/np.pi)**(1.0/2))
         else:
             raise ValueError('Only 3D and 2D inputs are supported.')
-        print('CustomLoss: min_freqs={},roi_radft={}'.format(self.min_freqs,self.roi_radft))
+        print('_CustomLoss: min_freqs={},roi_radft={}'.format(self.min_freqs,self.roi_radft))
 
         self.norm_pow = norm_pow
         if self.dim==3:
@@ -87,11 +109,16 @@ class CustomLoss:
         den = torch.sum(mask,dim=self.dimlist)
         for i,r in enumerate(recs):
             assert not torch.isnan(r).any()
+            #print('mse loss r.size() = ',r.size())
             num = torch.mean(torch.abs(gtruth-r)**self.norm_pow,dim=1,keepdim=True)
+            #print('mse loss num.size() = ',num.size())
             num = torch.sum(num*seg[:,i:i+1]*mask,dim=self.dimlist)
+            #print('mse loss num.size() = ',num.size())
             mse_losses.append(num/den)
         #return torch.mean(torch.stack(mse_losses))
+        #print('mse_losses len(mse_losses) = ',len(mse_losses))
         mse_losses = torch.sum(torch.stack(mse_losses,dim=-1),dim=-1)
+        #print('mse loss mse_losses.size() = ',mse_losses.size())
 
         assert (not torch.isnan(mse_losses).any()),torch.isnan(mse_losses)
         return torch.mean(mse_losses)
@@ -109,19 +136,26 @@ class CustomLoss:
             if self.dim==3:
                 W = torch.cat((W[:,:,:,:,-Nx:],W[:,:,:,:,:-Nx]),dim=4)
             W = mask*W
+            #print('smooth loss H.size() = {}, W.size() = {}'.format(H.size(),W.size()))
             assert torch.max(W)==1.0
             assert torch.min(W)==0.0
             nums.append(torch.sum(H*W,dim=self.dimlist))
             dens.append(torch.sum(W,dim=self.dimlist))
+        #print('smooth loss len(nums) = ',len(nums))
         smooth_loss = torch.sum(torch.stack(nums,dim=-1),dim=-1)/torch.sum(torch.stack(dens,dim=-1),dim=-1)   
+        #print('smooth loss smooth_loss.size() = ',smooth_loss.size())
         smooth_loss = -torch.log(torch.sum(smooth_loss,dim=1))
+        #print('smooth loss smooth_loss.size() = ',smooth_loss.size())
         assert (not torch.isnan(smooth_loss).any()),torch.isnan(smooth_loss)
         return torch.mean(smooth_loss)
 
     def devr_loss(self,seg,mask):
         clp = torch.sum(seg*mask,dim=self.dimlist)/torch.sum(mask,dim=self.dimlist)
+        #print('devr loss clp.size() = ',clp.size())
         clp = -torch.log((clp+self.eps*self.min_freqs)/self.min_freqs)
+        #print('devr loss clp.size() = ',clp.size())
         clp = torch.clamp(clp,min=0)
+        #print('devr loss clp.size() = ',clp.size())
         assert (not torch.isnan(clp).any()),torch.isnan(clp)
         return torch.mean(clp)
 
@@ -136,7 +170,7 @@ class CustomLoss:
         seg_sum = torch.sum(seg,dim=self.dimlist,keepdim=True)
         mask_sum = torch.sum(mask,dim=self.dimlist,keepdim=True)
         seg = seg/(seg_sum+self.eps)
-        
+       
         centr_z = torch.sum(seg*self.grid_z,dim=self.dimlist,keepdim=True)  
         centr_y = torch.sum(seg*self.grid_y,dim=self.dimlist,keepdim=True)  
         if self.dim == 3:
@@ -167,7 +201,35 @@ class CustomLoss:
          
     
 class AutoAtlas:
+    """
+    Class that encapsulate the definition, training, testing, and inference tasks for AutoAtlas.
+        
+    Args:
+        num_labels (int): Number of partition labels.
+        sizes (list of int): Dimensionality of input data.
+        data_chan (int): Number of channels of input data.
+        rel_reg (float): Regularization parameter for reconstruction error (REL) loss.
+        smooth_reg (float): Regularization parameter for neighborhood label similarity (NLS) loss.
+        devr_reg (float): Regularization parameter for anti-devouring (AD) loss.
+        roi_reg (float): Regularization parameter for enforcing compact ROI (UNSTABLE).
+        devr_mult (float): Minimum fraction of number of pixels for each label is `devr_mult` divided by number of labels.
+        roi_mult (float): Multiplier for the minimum radius beyond which a voxel/pixel will incur a penalty.
+        batch (int): Batch size for neural network training.
+        lr (float): Learning rate for neural network training.
+        unet_chan (int): Number of channels for the first layer of U-net.
+        unet_blocks (int): Number of blocks of U-net. Each block decreases/increases the size of each dimension by a factor of 2.
+        unet_layblk (int): Number of layers per U-net block.
+        aenc_chan (int): Number of channels at each layer of auto-encoder.
+        aenc_depth (int): Depth of auto-encoder including both downsampling and upsampling stages.
+        re_pow (float): The reconstruction error at each voxel/pixel is raised to `re_pow` power.
+        distr (bool): If `True`, then uses a particular implementation of distributed training.
+        device (str): Device must be either 'cuda' or 'cpu'.
+        load_ckpt_epoch (int): Loads AutoAtlas model at `load_ckpt_epoch` epoch.
+        ckpt_file (str): Checkpoint file. {} in the specified string will be replaced by `load_ckpt_epoch`.
+"""
     def __init__(self,num_labels=None,sizes=None,data_chan=None,rel_reg=None,smooth_reg=None,devr_reg=None,roi_reg=None,devr_mult=None,roi_mult=None,batch=None,lr=None,unet_chan=None,unet_blocks=None,unet_layblk=None,aenc_chan=None,aenc_depth=None,re_pow=None,distr=None,device=None,load_ckpt_epoch=None,ckpt_file='model_epoch_{}.pth'):
+        super(AutoAtlas, self).__init__()
+ 
         self.ARGS = {}
         self.ARGS['ckpt_file'] = ckpt_file
         self.ARGS['load_ckpt_epoch'] = load_ckpt_epoch
@@ -240,26 +302,36 @@ class AutoAtlas:
         assert self.acc_dev==self.cnnenc_dev
 
         #print("Devices: Accumulator {}, CNN encoder {}, CNN decoder {}, autoencoders {}".format(self.acc_dev,self.cnnenc_dev,self.cnndec_dev,self.aenc_devs))
-        self.cnn = UNet(self.ARGS['num_labels'],dim=dim,data_chan=self.ARGS['data_chan'],kernel_size=3,filters=self.ARGS['unet_chan'],blocks=self.ARGS['unet_blocks'],layers_block=self.ARGS['unet_layblk'],batch_norm=False,pad_type='SAME',enc_dev=self.cnnenc_dev,dec_dev=self.cnndec_dev)
+        self.cnn = _UNet(self.ARGS['num_labels'],dim=dim,data_chan=self.ARGS['data_chan'],kernel_size=3,filters=self.ARGS['unet_chan'],blocks=self.ARGS['unet_blocks'],layers_block=self.ARGS['unet_layblk'],batch_norm=False,pad_type='SAME',enc_dev=self.cnnenc_dev,dec_dev=self.cnndec_dev)
    
         self.autoencs = torch.nn.ModuleList([])
         for i in range(self.ARGS['num_labels']):
-            self.autoencs.append(AutoEnc(self.ARGS['sizes'],data_chan=self.ARGS['data_chan'],kernel_size=7,filters=self.ARGS['aenc_chan'],depth=self.ARGS['aenc_depth'],pool=2,batch_norm=False,pad_type='SAME').to(self.aenc_devs[i])) 
+            self.autoencs.append(_AutoEnc(self.ARGS['sizes'],data_chan=self.ARGS['data_chan'],kernel_size=7,filters=self.ARGS['aenc_chan'],depth=self.ARGS['aenc_depth'],pool=2,batch_norm=False,pad_type='SAME').to(self.aenc_devs[i])) 
         
-        self.model = SegmRecon(self.cnn,self.autoencs,self.aenc_devs)
+        self.model = _SegmRecon(self.cnn,self.autoencs,self.aenc_devs)
         if self.ARGS['distr']==False and device == 'cuda':
             print('Using torch.nn.DataParallel for parallel processing')
             devids = list(range(torch.cuda.device_count()))
             self.model = torch.nn.DataParallel(self.model,device_ids=devids)
             torch.backends.cudnn.benchmark = True
        
-        self.criterion = CustomLoss(num_labels=self.ARGS['num_labels'],sizes=self.ARGS['sizes'],norm_pow=self.ARGS['re_pow'],devr_mult=self.ARGS['devr_mult'],roi_mult=self.ARGS['roi_mult'],device=device)
+        self.criterion = _CustomLoss(num_labels=self.ARGS['num_labels'],sizes=self.ARGS['sizes'],norm_pow=self.ARGS['re_pow'],devr_mult=self.ARGS['devr_mult'],roi_mult=self.ARGS['roi_mult'],device=device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=self.ARGS['lr']) 
         if ckpt_path is not None:
             self.model.load_state_dict(ckpt['model'])
             self.optimizer.load_state_dict(ckpt['optimizer'])
 
     def train(self,dataset):
+        """
+        Method to train AutoAtlas.       
+ 
+        Args:
+            dataset (torch.utils.data.Dataset): Dataset used for training.
+
+        Returns:
+            Tuple of 5 floats containing various loss function values.
+            First float is the total loss function value. Second float is the RE loss value. Third float is the NLS loss value. Fourth float is the AD loss value. Fifth float is the ROI loss value.
+        """
         num_workers = min(self.ARGS['batch'],mp.cpu_count())
         print("Using {} number of workers to load data for training".format(num_workers))
         train_loader = DataLoader(dataset,batch_size=self.ARGS['batch'],shuffle=True,num_workers=num_workers)
@@ -328,6 +400,17 @@ class AutoAtlas:
         return avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss
 
     def test(self,dataset):
+        """
+        Method to test AutoAtlas.      
+
+        Args:
+            dataset (torch.utils.data.Dataset): Dataset used for testing.
+
+        Returns:
+            Tuple of 5 floats containing various loss function values.
+            First float is the total loss function value. Second float is the RE loss value. Third float is the NLS loss value. Fourth float is the AD loss value. Fifth float is the ROI loss value.
+        """
+ 
         num_workers = min(self.ARGS['batch'],mp.cpu_count())
         print("Using {} number of workers to load data for testing".format(num_workers))
         test_loader = DataLoader(dataset,batch_size=self.ARGS['batch'],shuffle=False,num_workers=num_workers)
@@ -392,6 +475,19 @@ class AutoAtlas:
         return avg_tot_loss,avg_mse_loss,avg_smooth_loss,avg_devr_loss,avg_roi_loss
 
     def process(self,dataset,ret_input=True):
+        """
+        Method to test AutoAtlas.      
+
+        Args:
+            dataset (torch.utils.data.Dataset): Dataset used for testing.
+            ret_input (bool): If `True`, returns input data as last element of returned tuple.
+        
+        Returns:
+            Returns 7 objects if :attr:`ret_input` is `True` and returns 6 objects otherwise.
+            
+            In the returned tuple of 5 objects, the first element is a list of numpy.ndarray volumes each containing the softmax scores for the partitioned volume. The second element is a list of numpy.ndarray volumes each containing the reconstruction of a partition. The third element is a list of numpy.ndarray volumes each containing a mask over the input. The fourth element is a list of numpy.ndarray data containing an encoding of the partitions. The fifth and sixth elements are lists of the data input and mask file names. The seventh element if returned is a list of numpy.ndarray volumes containing the input data. 
+        """
+
         loader = DataLoader(dataset,batch_size=self.ARGS['batch'],shuffle=False)
         self.model.eval()
         with torch.no_grad():
@@ -421,9 +517,26 @@ class AutoAtlas:
             return segs,recs,masks,codes,din_files,mk_files
 
     def get_ckpt_path(self, epoch, filen):
+        """
+        Returns the path to checkpoint file.
+
+        Args:
+            epoch (int): Epoch at which a model is restored.
+            filen (str): Filename of checkpoint file, where {} in the string is substituted with `epoch`.
+
+        Returns:
+            Checkpoint file path as `str` datatype.
+        """
         return filen.format(epoch)
 
     def ckpt(self, epoch, filen):
+        """
+        Write AutoAtlas model to a checkpoint file. 
+
+        Args:
+            epoch (int): Epoch at which a model is restored.
+            filen (str): Filename of checkpoint file, where {} in the string is substituted with `epoch`.
+        """
         state_dict = {
             'ARGS':self.ARGS,
             'model': self.model.state_dict(),

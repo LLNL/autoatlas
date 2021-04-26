@@ -1,6 +1,6 @@
 import torch
 import os
-from autoatlas.cnn import EncPred
+from autoatlas._cnn import EncPred
 from torch.utils.data import DataLoader
 import numpy as np
 import multiprocessing as mp

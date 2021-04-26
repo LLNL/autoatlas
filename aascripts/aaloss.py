@@ -1,13 +1,27 @@
 import argparse
-from autoatlas import AutoAtlas,partition_encode
+from autoatlas.aatlas import AutoAtlas,partition_encode
 from autoatlas.data import NibData
 import os
 import numpy as np
 import nibabel as nib
-from .cliargs import get_args,write_args
-from .cliargs import HELP_MSG_DICT as HELP
-from .utils import get_dataset
+from aascripts.cliargs import get_args,write_args,get_parser
+from aascripts.cliargs import HELP_MSG_DICT as HELP
+from aascripts.utils import get_dataset
 import csv
+
+def aaloss_parser(ret_dict=False):
+    ARGS_dict = {'ckpt':[str,'File for storing run time data.'],
+                'train_in':[str,'Filepath to input volume from training dataset.'],
+                'train_mask':[str,'Filepath of mask for training dataset.'],
+                'train_list':[str,'File containing list of training samples.'],
+                'train_losses':[str,'CSV file to save training losses.'],
+                'test_in':[str,'Filepath to input volume from testing dataset.'],
+                'test_mask':[str,'Filepath of mask for testing dataset.'],
+                'test_list':[str,'File containing list of testing samples.'],
+                'test_losses':[str,'CSV file to save testing losses.'],
+                'step_epochs':[int,'Compute loss every step_epochs number of epochs'],
+                'epochs':[int,'Number of epochs.']}
+    return get_parser(ARGS_dict, ret_dict)
 
 def make_dir(filen):
     folder = os.path.split(filen)
@@ -44,19 +58,8 @@ def get_losses(autoseg,smpl_list,dvol_filen,dmask_filen):
     return tot_loss,mse_loss,smooth_loss,devr_loss,roi_loss
  
 def main():
-    ARGS_dict = {'ckpt':[str,'File for storing run time data.'],
-                'train_in':[str,'Filepath to input volume from training dataset.'],
-                'train_mask':[str,'Filepath of mask for training dataset.'],
-                'train_list':[str,'File containing list of training samples.'],
-                'train_losses':[str,'CSV file to save training losses.'],
-                'test_in':[str,'Filepath to input volume from testing dataset.'],
-                'test_mask':[str,'Filepath of mask for testing dataset.'],
-                'test_list':[str,'File containing list of testing samples.'],
-                'test_losses':[str,'CSV file to save testing losses.'],
-                'step_epochs':[int,'Compute loss every step_epochs number of epochs'],
-                'epochs':[int,'Number of epochs.']}
+    ARGS = get_args(*aaloss_parser(ret_dict=True))
     
-    ARGS = get_args(ARGS_dict)
     cli_file = os.path.split(ARGS['cli_args'])[-1]
     write_args(ARGS,ARGS['cli_save'])
  

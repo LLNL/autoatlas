@@ -21,12 +21,12 @@ setup(name='autoatlas',
         "Operating System :: OS Independent",
       ],
       entry_points = {'console_scripts': [ 
-                'aatrain = scripts.aatrain:main',
-                'aainfer = scripts.aainfer:main',
-                'aaloss = scripts.aaloss:main',
-                'aacompare = scripts.aacompare:main',
-                'aarlearn = scripts.aarlearn:main',
-                'drtrain = scripts.drtrain:main', 
-                'drinfer = scripts.drinfer:main' 
+                'aatrain = aascripts.aatrain:main',
+                'aainfer = aascripts.aainfer:main',
+                'aaloss = aascripts.aaloss:main',
+                'aacompare = aascripts.aacompare:main',
+                'aarlearn = aascripts.aarlearn:main',
+                'drtrain = aascripts.drtrain:main', 
+                'drinfer = aascripts.drinfer:main' 
                 ]}
       )

@@ -1,6 +1,6 @@
 import nibabel as nib
 import numpy as np
-from autoatlas.utils import adjust_dims
+from autoatlas._utils import adjust_dims
 import os
 
 def overlap_coeff(atlas1,atlas2,mask=None,norm_type=None):

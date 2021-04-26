@@ -1,11 +1,28 @@
 import numpy as np
 import nibabel as nib
-from .cliargs import get_args
+from aascripts.cliargs import get_args,get_parser
 from autoatlas.analyze import overlap_coeff  
-from autoatlas.utils import adjust_dims
+from autoatlas._utils import adjust_dims
 import os
 import csv
 from .cliargs import HELP_MSG_DICT as HELP
+
+def aacompare_parser(ret_dict=False):
+    extra_args = {'train_list':[str,'File containing list of training samples.'],
+                  'train_segvol':[str,'File containing segmentation volume.'],
+                  'train_mask':[str,'Filepath of mask for training dataset.'],
+                  'train_atlas':[str,'Fixed atlas file.'],
+                  'train_olap_nnone':[str,'Overlap with no normalization.'],
+                  'train_olap_nmin':[str,'Overlap normalized by the minimum number of samples.'],
+                  'train_olap_nsum':[str,'Overlap normalized by the sum of samples.'],
+                  'test_list':[str,'File containing list of testing samples.'],
+                  'test_segvol':[str,'File containing segmentation volume.'],
+                  'test_mask':[str,'Filepath of mask for testing dataset.'],
+                  'test_atlas':[str,'Fixed atlas file.'],
+                  'test_olap_nnone':[str,'Overlap with no normalization.'],
+                  'test_olap_nmin':[str,'Overlap normalized by the minimum number of samples.'],
+                  'test_olap_nsum':[str,'Overlap normalized by the sum of samples.']} 
+    return get_parser(extra_args, ret_dict)
 
 def write_csv(filen,data):
     assert data.ndim==2
@@ -45,22 +62,8 @@ def comp_vol(smpl_list,segvol_filen,mask_filen,atlas_filen,olap_nnone_filen,olap
         write_csv(olap_nsum_filen.format(ID),np.squeeze(overlap_sum))
             
 def main():
-    extra_args = {'train_list':[str,'File containing list of training samples.'],
-                  'train_segvol':[str,'File containing segmentation volume.'],
-                  'train_mask':[str,'Filepath of mask for training dataset.'],
-                  'train_atlas':[str,'Fixed atlas file.'],
-                  'train_olap_nnone':[str,'Overlap with no normalization.'],
-                  'train_olap_nmin':[str,'Overlap normalized by the minimum number of samples.'],
-                  'train_olap_nsum':[str,'Overlap normalized by the sum of samples.'],
-                  'test_list':[str,'File containing list of testing samples.'],
-                  'test_segvol':[str,'File containing segmentation volume.'],
-                  'test_mask':[str,'Filepath of mask for testing dataset.'],
-                  'test_atlas':[str,'Fixed atlas file.'],
-                  'test_olap_nnone':[str,'Overlap with no normalization.'],
-                  'test_olap_nmin':[str,'Overlap normalized by the minimum number of samples.'],
-                  'test_olap_nsum':[str,'Overlap normalized by the sum of samples.']} 
+    ARGS = get_args(*aacompare_parser(ret_dict=True))
 
-    ARGS = get_args(extra_args)
     comp_vol(ARGS['train_list'],ARGS['train_segvol'],ARGS['train_mask'],ARGS['train_atlas'],ARGS['train_olap_nnone'],ARGS['train_olap_nmin'],ARGS['train_olap_nsum'])
     comp_vol(ARGS['test_list'],ARGS['test_segvol'],ARGS['test_mask'],ARGS['test_atlas'],ARGS['test_olap_nnone'],ARGS['test_olap_nmin'],ARGS['test_olap_nsum'])
                         

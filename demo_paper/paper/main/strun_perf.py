@@ -49,17 +49,17 @@ for opt in opts_labels.keys():
     val = max(score_r2[opt])
     text = ' {} '.format(opts_labels[opt])
     for r2 in score_r2[opt]:
-        #if r2 == val:
-        #    text += ' & \\textbf{{{:.3f}}} '.format(r2)
-        #else:
-        text += ' & {:.3f} '.format(r2)
+        if r2 == val:
+            text += ' & \\textbf{{{:.3f}}} '.format(r2)
+        else:
+            text += ' & {:.3f} '.format(r2)
     
     val = min(score_mae[opt])
     for mae in score_mae[opt]:
-        #if mae == val:
-        #    text += ' & \\textbf{{{:.2f}}} '.format(mae)
-        #else:
-        text += ' & {:.2f} '.format(mae)
+        if mae == val:
+            text += ' & \\textbf{{{:.2f}}} '.format(mae)
+        else:
+            text += ' & {:.2f} '.format(mae)
     text += '\\\\\\hline'
     print(text)
 

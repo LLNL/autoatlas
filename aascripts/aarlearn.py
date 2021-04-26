@@ -1,9 +1,26 @@
 import numpy as np
 import os
 import csv
-from autoatlas import Predictor
-from .cliargs import get_args
-from .rlargs import RLEARN_ARGS
+from autoatlas.rlearn import Predictor
+from aascripts.cliargs import get_parser,get_args
+from aascripts.rlargs import RLEARN_ARGS
+
+def aarlearn_parser(ret_dict=False):
+    extra_args = {'target':[str,'Name of parameter to be predicted.'],
+    'task':[str,'Choose between regression or classification.'],
+    'train_in':[str,'Filename of input features for training.'],
+    'train_out':[str,'Filename of output targets for training.'],
+    'train_list':[str,'File containing list of training samples.'],
+    'train_pred':[str,'File to store predicted values from train.'],
+    'train_summ':[str,'File to store ML performance metrics from train.'],
+    'test_in':[str,'Filename of input features for testing.'],
+    'test_out':[str,'Filename of output targets for testing.'],
+    'test_list':[str,'File containing list of testing samples.'],
+    'test_pred':[str,'File to store predicted values from test.'],
+    'test_summ':[str,'File to store ML performance metrics from test.'],
+    'no_frank':[bool,'If True, do not compute feature ranks.']
+    }
+    return get_parser(extra_args, ret_dict)
 
 def get_dataIO(in_file,out_file,smpl_list,target,task_type):
     samples = []
@@ -96,21 +113,7 @@ def write_csv(mlm,summ_file,pred_file,subj,gtruth,pred,score,regsc,append=False)
                 writer.writerow({k:csv_data[k][i] for k in csv_data.keys()})
          
 def main():
-    extra_args = {'target':[str,'Name of parameter to be predicted.'],
-    'task':[str,'Choose between regression or classification.'],
-    'train_in':[str,'Filename of input features for training.'],
-    'train_out':[str,'Filename of output targets for training.'],
-    'train_list':[str,'File containing list of training samples.'],
-    'train_pred':[str,'File to store predicted values from train.'],
-    'train_summ':[str,'File to store ML performance metrics from train.'],
-    'test_in':[str,'Filename of input features for testing.'],
-    'test_out':[str,'Filename of output targets for testing.'],
-    'test_list':[str,'File containing list of testing samples.'],
-    'test_pred':[str,'File to store predicted values from test.'],
-    'test_summ':[str,'File to store ML performance metrics from test.'],
-    'no_frank':[bool,'If True, do not compute feature ranks.']
-    }
-    ARGS = get_args(extra_args)
+    ARGS = get_args(*aarlearn_parser(ret_dict=True))
  
     train_in,train_out,train_subj = get_dataIO(ARGS['train_in'],ARGS['train_out'],ARGS['train_list'],ARGS['target'],ARGS['task'])
     test_in,test_out,test_subj = get_dataIO(ARGS['test_in'],ARGS['test_out'],ARGS['test_list'],ARGS['target'],ARGS['task'])

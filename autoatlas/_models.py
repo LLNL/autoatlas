@@ -1,8 +1,8 @@
 import torch
 
-class SegmRecon(torch.nn.Module):
+class _SegmRecon(torch.nn.Module):
     def __init__(self,segm,autoencs,aenc_devs):
-        super(SegmRecon,self).__init__()
+        super(_SegmRecon,self).__init__()
         self.segm = segm
         self.autoencs = autoencs
         self.devs = aenc_devs 

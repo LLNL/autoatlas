@@ -18,7 +18,7 @@ with open(os.path.join(test_dir,'subjects.txt'),'r') as csv_file:
         samples.append(row[0])
 
 #print(''.join([' $C_a$ ','& Optim ']+['& $f_{}$ '.format(lab) for lab in range(num_labels)]+['\\\\\\hline']))
-print(''.join(['Optim ']+['& $f_{}$ '.format(lab) for lab in range(num_labels)]+['\\\\\\hline']))
+print(''.join(['Optim ']+['& $f_{{{}}}$ '.format(lab) for lab in range(num_labels)]+['\\\\\\hline']))
 fieldnames = ['ML method','lin','svm','nneigh','mlp']
 for idx,ac in enumerate(achans):
     for opt in fieldnames[1:]:
@@ -34,9 +34,9 @@ for idx,ac in enumerate(achans):
         text = '{} '.format(opts_labels[opt])
         thresh = np.percentile(fv_imp,75)
         for lab in range(num_labels):
-            if fv_imp[lab] > thresh:
-                text += '& \\textbf{{{:.2f}}} '.format(fv_imp[lab])
-            else:
-                text += '& {:.2f} '.format(fv_imp[lab])
+            #if fv_imp[lab] > thresh:
+            #    text += '& \\textbf{{{:.2f}}} '.format(fv_imp[lab])
+            #else:
+            text += '& {:.2f} '.format(fv_imp[lab])
         print(text+'\\\\\\hline')
 

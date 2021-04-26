@@ -30,9 +30,9 @@ import collections
 #        else:
 #            raise ValueError('Only maxpool and cnn pooling are supported')
 
-class UNet(torch.nn.Module):
+class _UNet(torch.nn.Module):
     def __init__(self,num_labels,dim=3,data_chan=1,kernel_size=3,filters=32,blocks=7,layers_block=2,batch_norm=False,pad_type='SAME',enc_dev='cuda',dec_dev='cuda'):
-        super(UNet,self).__init__()
+        super(_UNet,self).__init__()
         self.kernel_size = kernel_size
         self.blocks = blocks
         self.enc_dev = enc_dev
@@ -56,15 +56,15 @@ class UNet(torch.nn.Module):
         else:
             raise ValueError("ERROR: dim for UNet must be either 2 or 3")
         
-        self.encoders = torch.nn.ModuleList([UNetEncoder(dim=dim,in_filters=data_chan,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)])
+        self.encoders = torch.nn.ModuleList([_UNetEncoder(dim=dim,in_filters=data_chan,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)])
         for _ in range(blocks//2-1):
-            enc = UNetEncoder(dim=dim,in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm) 
+            enc = _UNetEncoder(dim=dim,in_filters=filters,out_filters=2*filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm) 
             self.encoders.append(enc)
             filters *= 2
   
-        self.decoders = torch.nn.ModuleList([UNetDecoder(dim=dim,in_filters=filters,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)])
+        self.decoders = torch.nn.ModuleList([_UNetDecoder(dim=dim,in_filters=filters,out_filters=filters,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)])
         for _ in range(blocks//2-1):
-            dec = UNetDecoder(dim=dim,in_filters=filters*2,out_filters=filters//2,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)
+            dec = _UNetDecoder(dim=dim,in_filters=filters*2,out_filters=filters//2,kernel_size=kernel_size,pad_width=pad_width,layers_block=layers_block,batch_norm=batch_norm)
             self.decoders.append(dec)
             filters = filters//2
             #Division using // ensures return value is integer
@@ -106,9 +106,9 @@ class UNet(torch.nn.Module):
         x = torch.cat((x,z),dim=1)
         return self.output(x)
 
-class UNetEncoder(torch.nn.Module):
+class _UNetEncoder(torch.nn.Module):
     def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,layers_block,batch_norm=False):
-        super(UNetEncoder,self).__init__()
+        super(_UNetEncoder,self).__init__()
         
         if dim == 2:
             self.conv = torch.nn.Conv2d
@@ -130,9 +130,9 @@ class UNetEncoder(torch.nn.Module):
         x = self.model(x)
         return self.pool(x),x
 
-class UNetDecoder(torch.nn.Module):
+class _UNetDecoder(torch.nn.Module):
     def __init__(self,dim,in_filters,out_filters,kernel_size,pad_width,layers_block,batch_norm=False):
-        super(UNetDecoder,self).__init__()
+        super(_UNetDecoder,self).__init__()
        
         if dim == 2:
             self.conv = torch.nn.Conv2d
@@ -154,9 +154,9 @@ class UNetDecoder(torch.nn.Module):
     def forward(self,x):
         return self.model(x)
 
-class AutoEnc(torch.nn.Module):
+class _AutoEnc(torch.nn.Module):
     def __init__(self,sizes,data_chan=1,kernel_size=3,filters=8,depth=5,pool=2,batch_norm=False,pool_type='conv',pad_type='SAME'):
-        super(AutoEnc,self).__init__()
+        super(_AutoEnc,self).__init__()
         self.sizes = sizes
         dim = len(self.sizes)
 
