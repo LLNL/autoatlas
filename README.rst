@@ -54,3 +54,10 @@ Inference
      >>> help(AutoAtlas) #For help on creating AutoAtlas object
      >>> help(AutoAtlas.process) #For help on training AutoAtlas
 
+-------
+LICENSE
+-------
+AutoAtlas is distributed under the terms of the MIT license.
+
+LLNL-CODE-802877
+
