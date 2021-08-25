@@ -55,7 +55,7 @@ Inference
      >>> help(AutoAtlas.process) #For help on training AutoAtlas
 
 -------
-LICENSE
+License
 -------
 AutoAtlas is distributed under the terms of the MIT license.
 
