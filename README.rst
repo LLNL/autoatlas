@@ -5,7 +5,7 @@ AutoAtlas
 ---------
 Reference
 ---------
-K. A. Mohan, A. D. Kaplan, "AutoAtlas: Neural Network for 3D Unsupervised Partitioning and Representation Learning", *submitted to IEEE Journal of Biomedical and Health Informatics*, 2021 `(link to pdf) <https://arxiv.org/pdf/2010.15987.pdf>`_.
+* K. A. Mohan, A. D. Kaplan, "AutoAtlas: Neural Network for 3D Unsupervised Partitioning and Representation Learning", *submitted to IEEE Journal of Biomedical and Health Informatics*, 2021 `(link to pdf) <https://arxiv.org/pdf/2010.15987.pdf>`_.
 
 -------------
 Documentation
