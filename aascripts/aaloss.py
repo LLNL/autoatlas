@@ -20,6 +20,7 @@ def aaloss_parser(ret_dict=False):
                 'test_list':[str,'File containing list of testing samples.'],
                 'test_losses':[str,'CSV file to save testing losses.'],
                 'step_epochs':[int,'Compute loss every step_epochs number of epochs'],
+                'in_dims':[str,'Dimensions separated by commas.'],
                 'epochs':[int,'Number of epochs.']}
     return get_parser(ARGS_dict, ret_dict)
 
@@ -29,7 +30,7 @@ def make_dir(filen):
     folder = folder[0]
     os.makedirs(folder,exist_ok=True)
 
-def get_losses(autoseg,smpl_list,dvol_filen,dmask_filen):
+def get_losses(autoseg,smpl_list,ndim,dvol_filen,dmask_filen):
     samples = []
     with open(smpl_list,'r') as csv_file:
         reader = csv.reader(csv_file)
@@ -41,7 +42,7 @@ def get_losses(autoseg,smpl_list,dvol_filen,dmask_filen):
     tot_loss,mse_loss,smooth_loss,devr_loss,roi_loss = 0.0,0.0,0.0,0.0,0.0
     num_batches = 0
     for i in range(0,len(samples),batch):
-        smpl_dataset,data_fin,mask_fin = get_dataset(samples[i:i+batch],dvol_filen,dmask_filen)
+        smpl_dataset,data_fin,mask_fin = get_dataset(samples[i:i+batch],ndim,dvol_filen,dmask_filen)
         smpl_tot,smpl_mse,smpl_smooth,smpl_devr,smpl_roi = autoseg.test(smpl_dataset)
         tot_loss += smpl_tot
         mse_loss += smpl_mse
@@ -62,6 +63,7 @@ def main():
     
     cli_file = os.path.split(ARGS['cli_args'])[-1]
     write_args(ARGS,ARGS['cli_save'])
+    ndim = len(ARGS['in_dims'].split(','))
  
     make_dir(ARGS['train_losses']) 
     train_file = open(ARGS['train_losses'],'w') 
@@ -75,10 +77,10 @@ def main():
     for epoch in range(0,ARGS['epochs'],ARGS['step_epochs']): 
         autoseg = AutoAtlas(device='cuda',load_ckpt_epoch=epoch,ckpt_file=ARGS['ckpt'])
         if ARGS['train_list'] is not None:
-            tot_loss,rel_loss,smooth_loss,devr_loss,roi_loss = get_losses(autoseg,ARGS['train_list'],ARGS['train_in'],ARGS['train_mask'])
+            tot_loss,rel_loss,smooth_loss,devr_loss,roi_loss = get_losses(autoseg,ARGS['train_list'],ndim,ARGS['train_in'],ARGS['train_mask'])
             train_writer.writerow({'Epoch':epoch,'Tot Loss':tot_loss,'RE Loss':rel_loss,'NSS Loss':smooth_loss,'ADL Loss':devr_loss,'ROI Loss':roi_loss})
         if ARGS['test_list'] is not None:
-            tot_loss,rel_loss,smooth_loss,devr_loss,roi_loss = get_losses(autoseg,ARGS['test_list'],ARGS['test_in'],ARGS['test_mask'])
+            tot_loss,rel_loss,smooth_loss,devr_loss,roi_loss = get_losses(autoseg,ARGS['test_list'],ndim,ARGS['test_in'],ARGS['test_mask'])
             test_writer.writerow({'Epoch':epoch,'Tot Loss':tot_loss,'RE Loss':rel_loss,'NSS Loss':smooth_loss,'ADL Loss':devr_loss,'ROI Loss':roi_loss})
 
     train_file.close()

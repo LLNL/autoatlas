@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import csv
-from autoatlas import Predictor
+from autoatlas.rlearn import Predictor
 from .cliargs import get_args
 from .rlargs import RLEARN_ARGS
 

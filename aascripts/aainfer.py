@@ -84,23 +84,23 @@ def process_data(autoseg,ndim,smpl_list,dvol_filen,dmask_filen,segc_filen,embc_f
             write_code(embc_filen.format(smpl),embeds[j]) 
             write_code(allc_filen.format(smpl),np.concatenate((code,embeds[j]),axis=1)) 
 
-            if data_fout[j][:-7]=='.nii.gz' or data_fout[j][:-4]=='.nii':
+            if data_fout[j][-7:]=='.nii.gz' or data_fout[j][-4:]=='.nii':
                 aff,head = get_meta(data_fout[j])
-                axes = (1,2,3,0) if len(segs[j])==4 else (1,2,0)
+                axes = (1,2,3,0) if segs[j].ndim==4 else (1,2,0)
                 arr = np.transpose(segs[j].astype(np.float32,order='C'),axes=axes)
                 save_nifti(probv_filen.format(smpl),arr,aff,head)
                 arr = np.argmax(arr,axis=-1)
                 save_nifti(segv_filen.format(smpl),arr,aff,head)
-                axes = (1,2,3,0) if len(recs[j])==4 else (1,2,0)
+                axes = (1,2,3,0) if recs[j].ndim==4 else (1,2,0)
                 arr = np.transpose(recs[j].astype(np.float32,order='C'),axes=axes) 
                 save_nifti(recc_filen.format(smpl),arr,aff,head)
             else:
-                axes = (1,2,3,0) if len(segs[j])==4 else (1,2,0)
+                axes = (1,2,3,0) if segs[j].ndim==4 else (1,2,0)
                 arr = np.transpose(segs[j].astype(np.float32,order='C'),axes=axes)
                 np.save(probv_filen.format(smpl),arr) 
                 arr = np.argmax(arr,axis=-1)
                 np.save(segv_filen.format(smpl),arr) 
-                axes = (1,2,3,0) if len(recs[j])==4 else (1,2,0)
+                axes = (1,2,3,0) if recs[j].ndim==4 else (1,2,0)
                 arr = np.transpose(recs[j].astype(np.float32,order='C'),axes=axes) 
                 np.save(recc_filen.format(smpl),arr) 
  
